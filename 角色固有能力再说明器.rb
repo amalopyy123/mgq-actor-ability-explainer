@@ -192,6 +192,7 @@ module GouqiActorAbilityReintroducer
     907 => [[13] + ELEMENT_WEAKNESS_STATUS_IDS, ['燃焼・属性弱体状態', '燃烧及属性弱化状态']]
   }.freeze
   MANUAL_NAME_TRANSLATIONS = {
+    '影紬' => '影䌷',
     '話す' => '交谈',
     'ロゴスマギア' => '逻各斯魔导器',
     'システム：シルフV2' => '系统：希尔芙V2',
@@ -369,6 +370,17 @@ module GouqiActorAbilityReintroducer
       translated
     end
 
+    # Use the established Chinese name for the poison abnormal state.
+    # This is limited to state names so skill and item names remain unchanged.
+    def state_name_zh(lookups, id)
+      name = lookup(lookups[:states], id, '状态')
+      normalize_state_name_zh(translate_name(name))
+    end
+
+    def normalize_state_name_zh(name)
+      name.to_s == '毒' ? '中毒' : name.to_s
+    end
+
     def named_category_phrase(name, category, suffix)
       unknown = name.to_s.include?('（无对应') || name.to_s.include?('（対応不明')
       unknown ? "#{name}#{suffix}" : "#{name}#{category}#{suffix}"
@@ -458,7 +470,7 @@ module GouqiActorAbilityReintroducer
           :original_text => jp,
           :source_raw => source_raw,
           :duplicate_occurrence => occurrences[source_raw],
-          :comment => trait_comment(code, data_id, value)
+          :comment => trait_comment(code, data_id, value, actor_id)
         }
       end
     end
@@ -494,6 +506,10 @@ module GouqiActorAbilityReintroducer
           @issues << ['untranslated_note', actor_id, actor_name, line, "Unsupported tag: #{tag}"]
           generated << record_from_raw(tag, line)
         end
+        generated = consolidate_note_records(generated)
+        if line != parse_line
+          append_record_comment(generated, '原备注多写了一个“<”，但是仍能正常生效。')
+        end
         generated.each do |item|
           item[:source_raw] = line
           item[:original_text] = line if item[:source] == 'note'
@@ -501,6 +517,25 @@ module GouqiActorAbilityReintroducer
         end
         records.concat(generated)
       end
+    end
+
+    # Keep one CSV record for one raw note while preserving every parsed effect.
+    def consolidate_note_records(records)
+      return records if records.length <= 1
+
+      first = records.first
+      descriptions_jp = records.map { |item| item[:jp].to_s }.reject(&:empty?).uniq
+      descriptions_zh = records.map { |item| item[:zh].to_s }.reject(&:empty?).uniq
+      comments = records.map { |item| item[:comment].to_s }.reject(&:empty?).uniq
+      combined = first.dup
+      combined[:jp] = descriptions_jp.join('；')
+      combined[:zh] = descriptions_zh.join('；')
+      combined[:value_type] = 'composite'
+      combined[:value_raw] = records.map { |item| item[:value_raw].to_s }.reject(&:empty?).join('；')
+      combined[:value_display] = ''
+      combined[:comment] = comments.join('；')
+      combined[:importance] = records.any? { |item| item[:importance].to_s == 'core' } ? 'core' : first[:importance]
+      [combined]
     end
 
     def body_is_default_start_tp?(content, tag)
@@ -542,6 +577,43 @@ module GouqiActorAbilityReintroducer
     def explain_note_tag(actor_id, tag, content, lookups)
       body = content.sub(/\A#{Regexp.escape(tag)}\s*/, '').strip
       body, overwrite_comment = normalize_hash_pair_note(tag, body, lookups)
+      if tag == '能力値置き換え'
+        parsed = parse_stat_replacement(body)
+        return [] unless parsed
+
+        stype_ids, source_id, replacement_id = parsed
+        stype_jp = skill_type_names(stype_ids, lookups, false)
+        stype_zh = skill_type_names(stype_ids, lookups, true)
+        source_jp, source_zh = ability_value_names(source_id)
+        replacement_jp, replacement_zh = ability_value_names(replacement_id)
+        jp = "#{stype_jp}の#{source_jp}計算は、#{source_jp}と#{replacement_jp}の高い方を使用"
+        zh = "#{stype_zh}计算#{source_zh}时，取#{source_zh}与#{replacement_zh}中的较高值"
+        display = "技能类型ID #{stype_ids.join(',')}：#{source_zh}与#{replacement_zh}取较高值"
+        item = record(tag, jp, zh, 'stat_reference', body, display, 'note', "<#{content}>")
+        if [163, 836].include?(actor_id) && stype_ids == [52] && source_id == 6 && replacement_id == 3
+          item[:comment] = '固有能力描述写成「触手技」的威力改为取决于魔力而非灵巧，但原始备注实际作用于「粘液技」：计算灵巧时取灵巧与魔力中的较高值，两者不符；角色本身不能使用粘液技。'
+        elsif actor_id == 493 && stype_ids == [15]
+          item[:comment] = '原始备注指定的是「鞭技」（技能类型ID 15），但角色本身不能使用鞭技；作者原本想写的应是「弓技」（技能类型ID 14），可能误将14写成了15。'
+        elsif actor_id == 845 && stype_ids == [11] && source_id == 1 && replacement_id == 4
+          item[:comment] = '固有能力描述中包含「棍技」的相关效果，但原始备注实际写成了「斧技计算攻击力时，取攻击力与精神力中的较高值」（技能类型ID 11）；角色本身不能使用斧技，该效果对角色本身无效。作者原本想写的应是「棍技」（技能类型ID 12），可能误将12写成了11。'
+        end
+        return [item]
+      end
+      if tag == 'スキルチェーン'
+        ids = body.scan(/\d+/).map(&:to_i)
+        return [] if ids.empty?
+        names_jp = ids.map { |id| skill_type_lookup(lookups[:skill_types], id) }
+        names_zh = names_jp.map { |name| translate_name(name) }
+        item = record(tag, "#{names_jp.join('→')}スキルチェーン", "#{names_zh.join('→')}技能链", 'id_list', ids.join(','), '', 'note', "<#{content}>")
+        if actor_id == 493 && ids == [26, 15, 25]
+          item[:comment] = '原始备注指定技能链为「圣技→鞭技→召唤术」，但角色本身不能使用鞭技；作者原本想写的应是「圣技→弓技→召唤术」，可能误将技能类型ID 14（弓技）写成了15（鞭技）。'
+        elsif actor_id == 752 && ids == [17, 54, 27]
+          item[:comment] = '固有能力描述写成「暗技或尸技」「蛇技」「铁球技」可按顺序连锁发动，但原始备注实际指定的是「铁球技→蛇技→暗技」；角色本身不能使用蛇技，因此该技能链无法使用。'
+        elsif actor_id == 752 && ids == [58, 54, 27]
+          item[:comment] = '固有能力描述写成「暗技或尸技」「蛇技」「铁球技」可按顺序连锁发动，但原始备注实际指定的是「植物技→蛇技→暗技」；角色本身不能使用植物技和蛇技，因此该技能链无法使用。'
+        end
+        return [item]
+      end
       summary = summarize_long_note(actor_id, tag, body, lookups, content)
       if summary
         append_record_comment(summary, overwrite_comment)
@@ -574,9 +646,9 @@ module GouqiActorAbilityReintroducer
         return [] if pairs.empty?
         return pairs.map do |stype_id, amount|
           name_jp = skill_type_lookup(lookups[:skill_types], stype_id)
-          name_zh = translate_name(name_jp)
-          record(tag, "#{name_jp}ステート付与率アップ #{signed_number(amount.to_f)}%",
-                 "#{name_zh}状态附加率强化 #{signed_number(amount.to_f)}%",
+          name_zh = skill_type_effect_name_zh(lookups[:skill_types], stype_id)
+          record(tag, "#{name_jp}のステート付与率#{percent_change_phrase_jp(amount)}",
+                 "#{name_zh}的状态附加率#{percent_change_phrase_zh(amount)}",
                  'additive_percent', amount, "#{signed_number(amount.to_f)}%", 'note', "<#{content}>")
         end
       when 'スキル強化', 'ステート割合強化スキル'
@@ -625,7 +697,13 @@ module GouqiActorAbilityReintroducer
           state = lookup(lookups[:states], state_id, '状态')
           display = "+#{amount}%"
           zh_target = translate_name(target)
-          record(tag, "#{target}对#{state}特攻 #{display}", "#{zh_target.empty? ? target : zh_target}对#{state}的特攻伤害 #{display}", 'additive_percent', amount, display, 'note', "<#{content}>")
+          item = record(tag, "#{target}对#{state}特攻 #{display}", "#{zh_target.empty? ? target : zh_target}对#{state}的特攻伤害 #{display}", 'additive_percent', amount, display, 'note', "<#{content}>")
+          if actor_id == 183 && tag == 'ステート特攻スキルタイプ' && first == '58' && state_id == '28' && amount == '100'
+            item[:comment] = '固有能力描述写成对拘束状态的敌人使用「触手技」可造成特攻伤害，但原始备注实际指定的是「植物技对拘束特攻伤害 +100%」，两者不符；角色本身不能使用植物技。'
+          elsif actor_id == 864 && tag == 'ステート特攻スキルタイプ' && first == '69' && state_id == '23' && amount == '100'
+            item[:comment] = '该「巨技对黏滑特攻 +100%」与同一角色另一条「巨技对黏滑特攻 +150%」会相加，合计特攻增幅为 +250%，对应特攻倍率为 ×3.5。'
+          end
+          item
         end
       when 'パーティ特定アクター能力アップ'
         pairs = body.scan(/(\d+)-([+-]?\d+)/)
@@ -661,7 +739,7 @@ module GouqiActorAbilityReintroducer
           target = skill_type_lookup(lookups[:skill_types], skill_id)
           target_zh = translate_name(target)
           state = lookup(lookups[:states], state_id, '状态')
-          state_zh = translate_name(state)
+          state_zh = state_name_zh(lookups, state_id)
           if tag.include?('自己')
             jp = "#{target}使用時、自身に「#{state}」効果を#{amount}%の確率で付与"
             zh = "使用#{target_zh}时，以#{amount}%概率赋予自身「#{self_state_effect_zh(state_zh)}」效果"
@@ -671,8 +749,11 @@ module GouqiActorAbilityReintroducer
             jp = "#{target}使用時、#{subject_jp}に「#{state}」を#{amount}%の確率で付与"
             zh = "使用#{target_zh}时，以#{amount}%概率#{subject_zh}附加「#{state_zh}」状态"
           end
-          item = record(tag, jp, zh, 'additive_percent', amount, "+#{amount}%", 'note', "<#{content}>")
+          item = record(tag, jp, zh, 'chance', amount, "#{amount}%", 'note', "<#{content}>")
           item[:zh] = normalize_self_state_description(item[:zh]) if tag.include?('自己')
+          if actor_id == 126 && tag == 'スキルタイプステート敵付加' && skill_id == '21' && state_id == '393' && amount == '60'
+            item[:comment] = '固有能力描述写成「造技」有几率使敌人陷入攻击力下降状态，但原始备注实际指定的是使用「格斗」时，以60%概率对敌人附加「攻击力下降」状态，两者不符；角色本身不能使用格斗。'
+          end
           item
         end
       when 'スキルステート付加', 'スキルステート自己付加'
@@ -688,7 +769,7 @@ module GouqiActorAbilityReintroducer
           skill_names = entries.map { |skill_id, _state, _amount| skill_lookup(lookups[:skills], skill_id) }
           skill_names_zh = skill_names.map { |name| translate_name(name) }
           state_name = lookup(lookups[:states], state_id, '状态')
-          state_name_zh = translate_name(state_name)
+          state_name_zh = state_name_zh(lookups, state_id)
           if self_target
             jp_parts << "#{skill_names.join('、')}使用時、自身に「#{state_name}」効果を#{amount}%の確率で付与"
             zh_parts << "使用#{skill_names_zh.join('、')}时，以#{amount}%概率赋予自身「#{self_state_effect_zh(state_name_zh)}」效果"
@@ -711,7 +792,11 @@ module GouqiActorAbilityReintroducer
         return [] if pairs.empty?
         return pairs.map do |id, amount|
           name = tag.include?('タイプ') ? skill_type_lookup(lookups[:skill_types], id) : skill_lookup(lookups[:skills], id)
-          record(tag, "濒死时#{name}强化 +#{amount}%", "濒死时#{name}强化 +#{amount}%", 'additive_percent', amount, "+#{amount}%", 'note', "<#{content}>")
+          item = record(tag, "濒死时#{name}强化 +#{amount}%", "濒死时#{name}强化 +#{amount}%", 'additive_percent', amount, "+#{amount}%", 'note', "<#{content}>")
+          if actor_id == 267 && tag == '窮地スキルタイプ強化' && id == '30' && amount == '100'
+            item[:comment] = '固有能力描述写成伴随HP减少「刀技」得到强化，但原始备注实际指定的是濒死时「盗贼技」强化 +100%，两者不符；角色本身不能使用格斗。'
+          end
+          item
         end
       when '頑強スキルタイプ', '頑強スキル', '速攻発動スキルタイプ', '速攻発動スキル'
         ids = body.scan(/\d+/)
@@ -803,7 +888,7 @@ module GouqiActorAbilityReintroducer
         point_jp = { 'H' => 'HP', 'M' => 'MP', 'T' => 'TP' }[point] || point
         point_zh = point_jp
         state = lookup(lookups[:states], state_id, '状态')
-        state_zh = translate_name(state)
+        state_zh = normalize_state_name_zh(translate_name(state))
         condition = case trigger
                     when 0 then ["#{point_jp}が#{threshold}%未満になると", "#{point_zh}低于#{threshold}%时"]
                     when 1 then ["#{point_jp}が#{threshold}%以上になると", "#{point_zh}达到#{threshold}%以上时"]
@@ -816,7 +901,7 @@ module GouqiActorAbilityReintroducer
         direct_effect = TRIGGER_STATE_DIRECT_EFFECTS[state_id.to_i]
         zh = if direct_effect
              if trigger / 2 == 0
-                 "#{condition[1]}#{direct_effect}"
+                 "#{condition[1]}获得「#{direct_effect}」效果"
                else
                  "#{condition[1]}解除「#{direct_effect}」效果"
                end
@@ -1206,7 +1291,11 @@ module GouqiActorAbilityReintroducer
         # Use the complete translation table as a fallback; the legacy short table
         # does not contain every skill type and otherwise produced empty arrows.
         names_zh = names_jp.map { |name| translate_name(name) }
-        return [record(tag, "#{names_jp.join('→')}スキルチェーン", "#{names_zh.join('→')}技能链", 'id_list', ids.join(','), '', 'note', "<#{content}>")]
+        item = record(tag, "#{names_jp.join('→')}スキルチェーン", "#{names_zh.join('→')}技能链", 'id_list', ids.join(','), '', 'note', "<#{content}>")
+        if actor_id == 493 && ids == [26, 15, 25]
+          item[:comment] = '原始备注指定技能链为「圣技→鞭技→召唤术」，但角色本身不能使用鞭技；作者原本想写的应是「圣技→弓技→召唤术」，可能误将技能类型ID 14（弓技）写成了15（鞭技）。'
+        end
+        [item]
       when 'HPタイプ消費率', 'MPタイプ消費率', 'TPタイプ消費率', 'HPスキル消費率', 'MPスキル消費率', 'TPスキル消費率'
         pairs = body.scan(/(\d+)\s*-\s*([+-]?\d+)/)
         if pairs.empty?
@@ -1239,7 +1328,7 @@ module GouqiActorAbilityReintroducer
         jp = "#{stype_jp}の#{source_jp}計算は、#{source_jp}と#{replacement_jp}の高い方を使用"
         zh = "#{stype_zh}计算#{source_zh}时，取#{source_zh}与#{replacement_zh}中的较高值"
         display = "技能类型ID #{stype_ids.join(',')}：#{source_zh}与#{replacement_zh}取较高值"
-        return [record(tag, jp, zh, 'stat_reference', body, display, 'note', "<#{content}>")]
+        [record(tag, jp, zh, 'stat_reference', body, display, 'note', "<#{content}>")]
       when '能力値加算'
         parsed = parse_stat_addition(body)
         return [] unless parsed
@@ -1380,7 +1469,7 @@ module GouqiActorAbilityReintroducer
       when 4
         if condition_ids.length == 1
           state = lookup(lookups[:states], condition_ids.first, '状态')
-          state_zh = translate_name(state)
+          state_zh = normalize_state_name_zh(translate_name(state))
           ["敵に「#{state}」がある時", "敌方存在「#{state_zh}」状态时"]
         elsif condition_ids.all? { |id| id >= 300 }
           ["敵に強化状態がある時", "敌方存在强化状态时"]
@@ -1443,6 +1532,9 @@ module GouqiActorAbilityReintroducer
 
       skill_list_summary = summarize_uniform_skill_list(actor_id, tag, body, lookups, content)
       return skill_list_summary if skill_list_summary
+
+      grouped_pair_summary = summarize_grouped_pair_note(actor_id, tag, body, lookups, content)
+      return grouped_pair_summary if grouped_pair_summary
 
       named_list_summary = summarize_uniform_named_list(actor_id, tag, body, lookups, content)
       return named_list_summary if named_list_summary
@@ -1511,6 +1603,104 @@ module GouqiActorAbilityReintroducer
       end
       item = record(tag, jp, zh, value_type, value, display, 'note', "<#{content}>")
       item[:comment] = summarized_target_comment(tag, target_zh, pairs.map(&:first), lookups)
+      [item]
+    end
+
+    # Keep one source note on one CSV row while grouping targets that share the same value.
+    def summarize_grouped_pair_note(actor_id, tag, body, lookups, content)
+      supported_tags = [
+        'スキルタイプ強化', '属性強化', 'ステート割合強化タイプ',
+        '消費アイテム節約スキルタイプ', 'スキルタイプ攻撃回数アップ',
+        '特殊カテゴリー与ダメージアップ', '特殊カテゴリー被ダメージダウン'
+      ]
+      return nil unless supported_tags.include?(tag)
+
+      pairs = body.scan(/(\d+)\s*-\s*([+-]?\d+)/)
+      return nil if pairs.length < 2
+
+      groups = []
+      pairs.each do |id, value|
+        group = groups.find { |entry| entry[:value] == value }
+        unless group
+          group = { :value => value, :ids => [] }
+          groups << group
+        end
+        group[:ids] << id unless group[:ids].include?(id)
+      end
+
+      jp_clauses = []
+      zh_clauses = []
+      groups.each do |group|
+        value = group[:value]
+        ids = group[:ids]
+        case tag
+        when 'スキルタイプ強化'
+          names_jp = ids.map { |id| skill_type_lookup(lookups[:skill_types], id) }
+          names_zh = ids.map { |id| skill_type_effect_name_zh(lookups[:skill_types], id) }
+          jp_clauses << "#{names_jp.join('・')}の威力 +#{value}%"
+          zh_clauses << "#{names_zh.join('、')}威力 +#{value}%"
+        when '属性強化'
+          names_jp = ids.map { |id| element_lookup(lookups[:elements], id) }
+          names_zh = names_jp.map { |name| translate_name(name) }
+          jp_clauses << "#{named_category_phrase(names_jp.join('・'), '属性', 'の威力')} +#{value}%"
+          zh_clauses << "#{named_category_phrase(names_zh.join('、'), '属性', '威力')} +#{value}%"
+        when 'ステート割合強化タイプ'
+          names_jp = ids.map { |id| skill_type_lookup(lookups[:skill_types], id) }
+          names_zh = ids.map { |id| skill_type_effect_name_zh(lookups[:skill_types], id) }
+          jp_clauses << "#{names_jp.join('・')}のステート付与率#{percent_change_phrase_jp(value)}"
+          zh_clauses << "#{names_zh.join('、')}的状态附加率#{percent_change_phrase_zh(value)}"
+        when '消費アイテム節約スキルタイプ'
+          names_jp = ids.map { |id| skill_type_lookup(lookups[:skill_types], id) }
+          names_zh = ids.map { |id| skill_type_effect_name_zh(lookups[:skill_types], id) }
+          jp_clauses << "#{names_jp.join('・')}使用時、#{value}%の確率で消費アイテムを節約"
+          zh_clauses << "使用#{names_zh.join('或')}时，#{value}%概率不消耗道具"
+        when 'スキルタイプ攻撃回数アップ'
+          names_jp = ids.map { |id| skill_type_lookup(lookups[:skill_types], id) }
+          names_zh = ids.map { |id| skill_type_effect_name_zh(lookups[:skill_types], id) }
+          jp_clauses << "#{names_jp.join('・')}の攻撃回数 +#{value}"
+          zh_clauses << "#{names_zh.join('、')}攻击次数 +#{value}"
+        when '特殊カテゴリー与ダメージアップ'
+          names_jp = ids.map { |id| ex_category_names(id)[0] }
+          names_zh = ids.map { |id| ex_category_names(id)[1] }
+          jp_clauses << "#{names_jp.join('・')}への特攻 +#{value}%"
+          zh_clauses << "对#{names_zh.join('、')}特攻 +#{value}%"
+        when '特殊カテゴリー被ダメージダウン'
+          names_jp = ids.map { |id| ex_category_names(id)[0] }
+          names_zh = ids.map { |id| ex_category_names(id)[1] }
+          jp_clauses << "#{names_jp.join('・')}から受けるダメージを#{value}%軽減"
+          zh_clauses << "受到#{names_zh.join('、')}的伤害降低#{value}%"
+        end
+      end
+
+      uniform = groups.length == 1
+      value_type = if uniform
+                     case tag
+                     when '消費アイテム節約スキルタイプ' then 'chance'
+                     when 'スキルタイプ攻撃回数アップ' then 'count'
+                     else 'additive_percent'
+                     end
+                   else
+                     'mapping'
+                   end
+      value_raw = uniform ? groups.first[:value] : pairs.map { |id, value| "#{id}-#{value}" }.join(',')
+      value_display = if uniform
+                        case tag
+                        when '消費アイテム節約スキルタイプ' then "#{groups.first[:value]}%"
+                        when 'スキルタイプ攻撃回数アップ' then "+#{groups.first[:value]}"
+                        else "+#{groups.first[:value]}%"
+                        end
+                      else
+                        ''
+                      end
+      item = record(tag, jp_clauses.join('；'), zh_clauses.join('；'),
+                    value_type, value_raw, value_display, 'note', "<#{content}>")
+      if tag == 'スキルタイプ強化' && content == 'スキルタイプ強化 9-25,18-26,29-25,37-25,49-25'
+        item[:comment] = '原备注中只有扇技为26%，其余技能类型均为25%；可能是原数据笔误，但游戏实际按26%计算。'
+      elsif tag == 'スキルタイプ強化' && pairs.any? { |id, _value| id == '64' }
+        item[:comment] = '技能类型ID 64「装备武器」指由装备武器提供的技能，不是直接提高武器装备属性。'
+      elsif tag == '特殊カテゴリー被ダメージダウン' && pairs.map(&:first).uniq.length > 1
+        item[:comment] = '攻击者同时属于多个列出的种族时，各种族的受伤倍率分别生效并相乘。'
+      end
       [item]
     end
 
@@ -1634,7 +1824,7 @@ module GouqiActorAbilityReintroducer
       end
       descriptions_zh = groups.map do |(state_id, amount), entries|
         names = entries.map { |skill_id, _state, _value| translate_name(skill_lookup(lookups[:skills], skill_id)) }
-        state = translate_name(lookup(lookups[:states], state_id, '状态'))
+        state = state_name_zh(lookups, state_id)
         if self_target
           "使用#{names.join('、')}时，以#{amount}%概率赋予自身「#{self_state_effect_zh(state)}」效果"
         else
@@ -1771,7 +1961,7 @@ module GouqiActorAbilityReintroducer
 
       item = record(tag, jp, zh, value_type, value, display, 'note', "<#{content}>")
       if actor_id == 728 && tag == 'TPタイプ消費率' && ids.sort == %w[26 53]
-        item[:comment] = '圣技SP消耗量也增加33%。'
+        item[:comment] = '圣技SP消耗量也增加33%（标签中的技能类型ID 26）；角色本身不能使用圣技。'
       end
       if [33, 35].include?(actor_id) && tag == 'HPタイプ消費率'
         item[:zh] = "使用#{target_zh}时，HP消耗量#{percent_ratio_phrase_zh(value)}"
@@ -1933,8 +2123,8 @@ module GouqiActorAbilityReintroducer
 
       triples = body.scan(/(\d+)\s*-\s*(\d+)\s*-\s*([+-]?\d+)/)
       values = triples.map { |_type_id, _state_id, value| value }
-      return nil unless values.uniq.length == 1
       return nil if triples.length < 2
+      return summarize_mixed_type_state_addition(tag, triples, lookups, content) unless values.uniq.length == 1
 
       type_ids = triples.map { |type_id, _state_id, _value| type_id }.uniq
       state_ids = triples.map { |_type_id, state_id, _value| state_id }.uniq
@@ -1950,7 +2140,7 @@ module GouqiActorAbilityReintroducer
       type_jp = type_names.map { |name| "「#{name}」" }.join('・')
       type_zh = type_names.map { |name| "「#{translate_name(name)}」" }.join('、')
       state_jp = state_names.join('・')
-      state_zh_names = state_names.map { |name| translate_name(name) }
+          state_zh_names = state_names.map { |name| normalize_state_name_zh(translate_name(name)) }
       state_zh = state_zh_names.join('、')
       target_jp, target_zh = {
         'スキルタイプステート敵付加' => ['敵', '对敌人'],
@@ -1979,6 +2169,70 @@ module GouqiActorAbilityReintroducer
       item = record(tag, jp, zh, 'chance', value, display, 'note', "<#{content}>")
       item[:zh] = normalize_self_state_description(item[:zh]) if tag == 'スキルタイプステート自己付加'
       item[:comment] = state_effect_comment(tag, triples, lookups)
+      [item]
+    end
+
+    # Mixed probabilities remain one record, with each state-to-probability mapping preserved.
+    def summarize_mixed_type_state_addition(tag, triples, lookups, content)
+      state_groups = []
+      triples.each do |type_id, state_id, amount|
+        key = [state_id, amount]
+        group = state_groups.find { |entry| entry[:key] == key }
+        unless group
+          group = { :key => key, :type_ids => [] }
+          state_groups << group
+        end
+        group[:type_ids] << type_id unless group[:type_ids].include?(type_id)
+      end
+
+      groups = []
+      state_groups.each do |state_group|
+        type_ids = state_group[:type_ids]
+        group = groups.find { |entry| entry[:type_ids] == type_ids }
+        unless group
+          group = { :type_ids => type_ids, :effects => [] }
+          groups << group
+        end
+        state_id, amount = state_group[:key]
+        group[:effects] << { :state_id => state_id, :amount => amount }
+      end
+
+      target_jp, target_zh = {
+        'スキルタイプステート敵付加' => ['敵', '对敌人'],
+        'スキルタイプステート味方付加' => ['味方', '为队友'],
+        'スキルタイプステート自己付加' => ['自身', '自身']
+      }.fetch(tag)
+      jp_clauses = []
+      zh_clauses = []
+      groups.each do |group|
+        type_names_jp = group[:type_ids].map { |id| skill_type_lookup(lookups[:skill_types], id) }
+        type_names_zh = group[:type_ids].map { |id| skill_type_effect_name_zh(lookups[:skill_types], id) }
+        type_jp = type_names_jp.map { |name| "「#{name}」" }.join('・')
+        type_zh = type_names_zh.map { |name| "「#{name}」" }.join('、')
+        effects = group[:effects].map do |effect|
+          state_name_jp = lookup(lookups[:states], effect[:state_id], '状态')
+          {
+            :amount => effect[:amount],
+            :state_jp => state_name_jp,
+            :state_zh => normalize_state_name_zh(translate_name(state_name_jp))
+          }
+        end
+        if tag == 'スキルタイプステート自己付加'
+          jp_effects = effects.map { |effect| "#{effect[:amount]}%の確率で自身に「#{effect[:state_jp]}」効果を付与" }
+          zh_effects = effects.map { |effect| "以#{effect[:amount]}%概率赋予自身「#{self_state_effect_zh(effect[:state_zh])}」效果" }
+        else
+          jp_effects = effects.map { |effect| "#{effect[:amount]}%の確率で#{target_jp}に「#{effect[:state_jp]}」を付与" }
+          zh_effects = effects.map { |effect| "以#{effect[:amount]}%概率#{target_zh}附加「#{effect[:state_zh]}」状态" }
+        end
+        jp_clauses << "#{type_jp}使用時、#{jp_effects.join('、')}"
+        zh_clauses << "使用#{type_zh}时，#{zh_effects.join('，并')}"
+      end
+
+      value_raw = triples.map { |type_id, state_id, amount| "#{type_id}-#{state_id}-#{amount}" }.join(',')
+      item = record(tag, jp_clauses.join('；'), zh_clauses.join('；'),
+                    'mapping', value_raw, '', 'note', "<#{content}>")
+      item[:zh] = normalize_self_state_description(item[:zh]) if tag == 'スキルタイプステート自己付加'
+      item[:comment] = state_effect_comment(tag, triples.uniq, lookups)
       [item]
     end
 
@@ -2019,7 +2273,7 @@ module GouqiActorAbilityReintroducer
         type_jp = type_names_jp.map { |name| "「#{name}」" }.join('・')
         type_zh = type_names_zh.map { |name| "「#{name}」" }.join('、')
         state_jp = state_names_jp.map { |name| "「#{name}」" }.join('、')
-        state_zh = state_names_zh.map { |name| "「#{name}」" }.join('、')
+        state_zh = state_names_zh.map { |name| "「#{normalize_state_name_zh(name)}」" }.join('、')
         multiple_states = group[:state_ids].length > 1
         if tag == 'スキルタイプステート自己付加'
           jp_clauses << "#{type_jp}使用時、自身に#{state_jp}効果を#{multiple_states ? 'それぞれ' : ''}#{display}の確率で付与"
@@ -2112,7 +2366,7 @@ module GouqiActorAbilityReintroducer
       end
       zh_clauses = groups.map do |group|
         targets = group[:target_ids].map { |id| translate_name(skill_type_lookup(lookups[:skill_types], id)) }.join('、')
-        states = group[:state_ids].map { |id| translate_name(lookup(lookups[:states], id, '状态')) }.join('、')
+        states = group[:state_ids].map { |id| state_name_zh(lookups, id) }.join('、')
         "#{targets}对#{states}的特攻伤害 #{display}"
       end
       item = record('ステート特攻スキルタイプ', jp_clauses.join('；'), zh_clauses.join('；'),
@@ -2125,7 +2379,10 @@ module GouqiActorAbilityReintroducer
         state_effect_comment('スキルタイプステート敵付加', triples.uniq, lookups)
       ].join('；')
       if actor_id == 624 && triples.include?(%w[58 16 150])
-        item[:comment] = [item[:comment], '植物技对减速特攻 +150%。'].join('；')
+        item[:comment] = [item[:comment], '植物技对减速特攻 +150%', '角色本身不能使用植物技'].join('；') + '。'
+      end
+      if actor_id == 864 && triples.include?(%w[69 23 150])
+        item[:comment] = [item[:comment], '该「巨技对黏滑特攻 +150%」与同一角色另一条「巨技对黏滑特攻 +100%」会相加，合计特攻增幅为 +250%，对应特攻倍率为 ×3.5。'].join('；')
       end
       [item]
     end
@@ -2166,9 +2423,10 @@ module GouqiActorAbilityReintroducer
              else
                lookup(collection, id, fallback)
              end
+      name = normalize_state_name_zh(translate_name(name)) if fallback == '状态'
       return name if name.start_with?("ID #{id}") && name.include?('（无对应')
 
-      "#{id}（#{translate_name(name)}）"
+      "#{id}（#{fallback == '状态' ? name : translate_name(name)}）"
     end
 
     def actor_name_chinese(collection, id)
@@ -2225,8 +2483,8 @@ module GouqiActorAbilityReintroducer
       quoted_jp = names_jp.map { |name| "「#{name}」" }.join
       quoted_zh = names_zh.map { |name| "「#{name}」" }.join
       note = "#{quoted_jp}を#{count}次連続発動（構文エラーのため、この能力は無効）"
-      description = "#{quoted_zh}连续发动#{count}次（因语法错误此能力无效）"
-      record('連続発動タイプ', note, description, 'invalid', body, "#{count}次（无效）", 'note', "<#{content}>")
+      description = "#{quoted_zh}连续发动#{count}次（因语法错误此能力完全不生效）"
+      record('連続発動タイプ', note, description, 'invalid', body, "#{count}次（完全不生效）", 'note', "<#{content}>")
     end
 
     def skill_type_missing?(collection, id)
@@ -2237,6 +2495,26 @@ module GouqiActorAbilityReintroducer
       return "ID #{id}技能类型（无对应技能类型）" if skill_type_missing?(collection, id)
 
       lookup(collection, id, '技能类型')
+    end
+
+    def skill_type_effect_name_zh(collection, id)
+      return '装备武器类技能' if id.to_i == 64
+
+      translate_name(skill_type_lookup(collection, id))
+    end
+
+    def percent_change_phrase_jp(value)
+      amount = value.to_f
+      return '変化なし' if amount.zero?
+
+      amount.positive? ? "を#{number(amount)}%アップ" : "を#{number(amount.abs)}%ダウン"
+    end
+
+    def percent_change_phrase_zh(value)
+      amount = value.to_f
+      return '不变' if amount.zero?
+
+      amount.positive? ? "提高#{number(amount)}%" : "降低#{number(amount.abs)}%"
     end
 
     def long_target_labels(actor_id, tag, pairs, lookups)
@@ -2281,8 +2559,9 @@ module GouqiActorAbilityReintroducer
       return override[1] if override && common_ids == override[0].sort
       if ids.length <= 5
         names = ids.map { |id| lookup(lookups[:states], id, '状态') }
-        joined = names.join('、')
-        return [joined, joined]
+        joined_jp = names.join('、')
+        joined_zh = names.map { |name| normalize_state_name_zh(translate_name(name)) }.join('、')
+        return [joined_jp, joined_zh]
       end
       ["指定された#{ids.length}種類の状態異常", "指定的#{ids.length}种异常状态"]
     end
@@ -2325,7 +2604,9 @@ module GouqiActorAbilityReintroducer
     def duplicate_effect_rule(item)
       if item[:source].to_s == 'trait'
         code = item[:source_raw].to_s[/\Acode=(\d+)/, 1].to_i
+        data_id = item[:source_raw].to_s[/data_id=(\d+)/, 1].to_i
         return '效果可叠加，倍率相乘' if [11, 13, 21, 23].include?(code)
+        return '多个HP再生率按“1 - ∏(1 - 各项数值)”合并' if code == 22 && data_id == 7
         return '效果可叠加，数值相加' if code == 22
         return '每条特性分别进行概率判定，重复记录会增加触发次数' if code == 61
         return '通常不叠加，仅保留一次效果' if [31, 41, 43, 51, 52, 55].include?(code)
@@ -2371,7 +2652,7 @@ module GouqiActorAbilityReintroducer
 
     def trait_value_display(code, value)
       return "×#{percent(value.to_f * 100)}%" if [11, 13, 21, 23].include?(code)
-      return "+#{percent(value.to_f * 100)}%" if code == 22
+      return "#{value.to_f >= 0 ? '+' : ''}#{percent(value.to_f * 100)}%" if code == 22
       return signed_number(value) if code == 33
       return "+#{number(value)}回" if code == 34
       return action_plus_phrase_jp(value) if code == 61
@@ -2389,6 +2670,8 @@ module GouqiActorAbilityReintroducer
       when 21
         "基本#{PARAM_NAMES[data_id.to_i] || "参数#{data_id}"}#{ratio_phrase_jp(value)}"
       when 22
+        return hp_regeneration_text_jp(value) if data_id.to_i == 7
+
         name = XPARAM_NAMES[data_id.to_i] || "追加参数#{data_id}"
         "#{name}#{additive_phrase_jp(value)}"
       when 23
@@ -2427,13 +2710,15 @@ module GouqiActorAbilityReintroducer
         element = translate_name(element_lookup(lookups[:elements], data_id))
         value.to_f.zero? ? "免疫#{element}属性伤害（伤害倍率×0%，伤害减少100%）" : "受到#{element}属性伤害#{ratio_phrase_zh(value)}"
       when 13
-        state = translate_name(lookup(lookups[:states], data_id, '状态'))
+        state = state_name_zh(lookups, data_id)
         value.to_f.zero? ? "免疫#{state}状态（附加概率倍率×0%，附加概率减少100%）" : "被施加#{state}状态的概率#{ratio_phrase_zh(value)}"
       when 21
         names = { '最大HP' => '最大HP', '最大MP' => '最大MP', '攻撃力' => '攻击力', '防御力' => '防御力', '魔力' => '魔力', '精神力' => '精神力', '素早さ' => '敏捷', '器用さ' => '灵巧' }
         jp_name = PARAM_NAMES[data_id.to_i] || "参数#{data_id}"
         "基础#{names[jp_name] || jp_name}#{ratio_phrase_zh(value)}"
       when 22
+        return hp_regeneration_text_zh(value) if data_id.to_i == 7
+
         "#{XPARAM_NAMES_ZH[data_id.to_i] || "追加参数#{data_id}"}#{additive_phrase_zh(value)}"
       when 23
         return guard_effect_rate_text_zh(value) if data_id.to_i == 1
@@ -2443,7 +2728,7 @@ module GouqiActorAbilityReintroducer
       when 31
         "攻击属性：#{element_lookup(lookups[:elements], data_id)}"
       when 32
-        "攻击时附加#{lookup(lookups[:states], data_id, '状态')}（基础附加率#{percent(value.to_f * 100)}%）"
+        "攻击时附加#{state_name_zh(lookups, data_id)}（基础附加率#{percent(value.to_f * 100)}%）"
       when 33
         "攻击速度修正#{signed_number(value)}"
       when 34
@@ -2465,7 +2750,14 @@ module GouqiActorAbilityReintroducer
       end
     end
 
-    def trait_comment(code, data_id, value)
+    def trait_comment(code, data_id, value, actor_id = nil)
+      if actor_id.to_i == 724 && code.to_i == 41 && data_id.to_i == 45
+        return '固有能力描述写成可以使用「忍术」「暗技」，但原始特性将 data_id=31（忍术）误写成了 data_id=45（医术），所以当前记录显示为可以使用「医术」；角色本身不能使用忍术，但初始职业「忍神」（ID 7030）可以让角色使用忍术。'
+      end
+      if code.to_i == 22 && data_id.to_i == 7
+        return '游戏将多个HP再生率按“1 - ∏(1 - 各项数值)”合并；最终每回合HP变化量为最大HP×最终HP再生率，正值恢复HP，负值造成伤害。'
+      end
+
       return '' unless code.to_i == 23 && data_id.to_i == 1
 
       raw_rate = value.to_f
@@ -2477,6 +2769,20 @@ module GouqiActorAbilityReintroducer
                  "最终防御效果率为×#{percent(effective_rate * 100)}%，防御时受到未防御伤害的#{percent(base_damage_rate)}%。"
                end
       "游戏取防御效果率特性的最大值，并以×100%为下限；防御伤害按“伤害÷（2×最终防御效果率）”计算。#{effect}"
+    end
+
+    def hp_regeneration_text_jp(value)
+      amount = value.to_f * 100
+      return '毎ターンのHP増減なし' if amount.zero?
+
+      amount > 0 ? "毎ターン最大HPの#{percent(amount)}%回復" : "毎ターン最大HPの#{percent(amount.abs)}%ダメージ"
+    end
+
+    def hp_regeneration_text_zh(value)
+      amount = value.to_f * 100
+      return '每回合HP不发生变化' if amount.zero?
+
+      amount > 0 ? "每回合恢复最大HP的#{percent(amount)}%" : "每回合受到最大HP的#{percent(amount.abs)}%伤害"
     end
 
     def guard_effect_rate_text_jp(value)
