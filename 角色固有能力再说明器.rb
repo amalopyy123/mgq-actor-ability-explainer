@@ -158,6 +158,7 @@ module GouqiActorAbilityReintroducer
     [109, 'ステート特攻スキル'] => ['泡を使うスキル', '泡泡类技能'],
     [229, 'ステート特攻スキル'] => ['髪を使うスキル', '使用头发的技能'],
     [757, 'ステート特攻スキルタイプ'] => ['「刀技」「扇技」「陰陽術」「踊る」「淫技」', '「刀技」「扇技」「阴阳术」「舞蹈」「淫技」'],
+    [749, 'ステート特攻スキルタイプ'] => ['扇技・闇技・踊る・歌う・造技', '扇技、暗技、舞蹈、歌唱、造技'],
     [790, 'スキルタイプ強化'] => ['全魔法', '所有魔法'],
     [818, 'スキルタイプ強化'] => ['魔法スキル', '魔法技能'],
     [251, '窮地スキル強化'] => ['乳房を使うスキル', '使用乳房的技能'],
@@ -222,6 +223,7 @@ module GouqiActorAbilityReintroducer
     165 => 'SP消耗变为50%',
     322 => '刀技连续发动2次',
     323 => '剑技连续发动2次',
+    365 => '必中闪避率提升50%',
     324 => '枪技连续发动2次'
   }.freeze
   JAPANESE_RESIDUE_PATTERN = /[\p{Hiragana}\p{Katakana}]|反撃|連続|発動|消費|意識|状態|付与|剣|槍/.freeze
@@ -378,7 +380,8 @@ module GouqiActorAbilityReintroducer
     end
 
     def normalize_state_name_zh(name)
-      name.to_s == '毒' ? '中毒' : name.to_s
+      normalized = name.to_s == '毒' ? '中毒' : name.to_s
+      normalized.gsub('万能闪避率', '必中闪避率').gsub('回避率', '闪避率')
     end
 
     def named_category_phrase(name, category, suffix)
@@ -408,6 +411,11 @@ module GouqiActorAbilityReintroducer
 
     def normalize_self_state_description(text)
       self_state_effect_zh(text)
+    end
+
+    # Keep the state 46 wording consistent with the other actor descriptions.
+    def normalize_state_effect_description(text)
+      text.to_s.gsub('回避率+50%', '闪避率提升50%').gsub('回避率提升', '闪避率提升')
     end
 
     def ex_category_names(category_id)
@@ -513,6 +521,25 @@ module GouqiActorAbilityReintroducer
         generated.each do |item|
           item[:source_raw] = line
           item[:original_text] = line if item[:source] == 'note'
+          if actor_id == 861 && line == '<初期装備1,0:4825>'
+            item[:comment] = '原始备注将初始装备标签误写为「<初期装備1,0:4825>」；标准格式应使用冒号分隔槽位与装备ID。该格式错误可能导致引擎容错解析异常，尤其可能影响副手或副武器的读取。'
+          end
+          if actor_id == 173 && line.include?('14-28-100')
+            item[:comment] = '角色本身不能使用弓技，但其初始职业或职业特性可以提供弓技使用权限，因此该弓技效果在获得相应职业权限后可以发挥。'
+          elsif actor_id == 452 && line.include?('12-23-150')
+            item[:comment] = '角色本身不能使用棍技，但其初始职业或职业特性可以提供棍技使用权限，因此该棍技效果在获得相应职业权限后可以发挥。'
+          elsif actor_id == 457 && line.include?('62-')
+            item[:comment] = '角色本身不能使用吐息，但其初始种族或种族特性可以提供吐息使用权限，因此该吐息效果在获得相应种族权限后可以发挥。'
+          elsif actor_id == 527 && line.include?('33-50')
+            item[:comment] = '角色本身不能使用英雄技，但使用特技变身后可以获得英雄技使用权限，因此该英雄技效果在变身后可以发挥。'
+          elsif actor_id == 813 && line.include?('53,1,6')
+            item[:comment] = '角色本身不能使用兽技，但其初始种族或种族特性可以提供兽技使用权限，因此该兽技效果在获得相应种族权限后可以发挥。'
+          elsif actor_id == 735 && line.include?('52-50')
+            item[:comment] = '角色拥有粘液技使用权限，但初始状态没有学会任何粘液技技能，因此当前状态下没有可用的粘液技；只有学会粘液技技能后，相关强化才会实际发挥作用。'
+          end
+          if actor_id == 760 && line.start_with?('<スキルタイプ強化') && line.match?(/(?:19|43|60|70)-75/)
+            item[:comment] = '该技能类型的+75%强化与同一角色另一条<スキルタイプ強化>标签中的同类+75%会叠加，因此铳技、器械、造技、混沌实际威力强化为+150%。'
+          end
           item[:duplicate_occurrence] = occurrence
         end
         records.concat(generated)
@@ -594,9 +621,13 @@ module GouqiActorAbilityReintroducer
           item[:comment] = '固有能力描述写成「触手技」的威力改为取决于魔力而非灵巧，但原始备注实际作用于「粘液技」：计算灵巧时取灵巧与魔力中的较高值，两者不符；角色本身不能使用粘液技。'
         elsif actor_id == 493 && stype_ids == [15]
           item[:comment] = '原始备注指定的是「鞭技」（技能类型ID 15），但角色本身不能使用鞭技；作者原本想写的应是「弓技」（技能类型ID 14），可能误将14写成了15。'
-        elsif actor_id == 845 && stype_ids == [11] && source_id == 1 && replacement_id == 4
-          item[:comment] = '固有能力描述中包含「棍技」的相关效果，但原始备注实际写成了「斧技计算攻击力时，取攻击力与精神力中的较高值」（技能类型ID 11）；角色本身不能使用斧技，该效果对角色本身无效。作者原本想写的应是「棍技」（技能类型ID 12），可能误将12写成了11。'
-        end
+         elsif actor_id == 845 && stype_ids == [11] && source_id == 1 && replacement_id == 4
+           item[:comment] = '固有能力描述中包含「棍技」的相关效果，但原始备注实际写成了「斧技计算攻击力时，取攻击力与精神力中的较高值」（技能类型ID 11）；角色本身不能使用斧技，该效果对角色本身无效。作者原本想写的应是「棍技」（技能类型ID 12），可能误将12写成了11。'
+          elsif [706, 999].include?(actor_id) && stype_ids == [30] && source_id == 3 && replacement_id == 6
+            item[:comment] = '固有能力描述为「盗贼技」计算魔力时取魔力与灵巧中的较高值，但角色本身不能使用盗贼技；盗贼技本身也不采用魔力计算，因此该效果实际不生效。'
+          elsif actor_id == 678 && stype_ids == [60] && source_id == 3 && replacement_id == 6
+            item[:comment] = '固有能力描述为「格斗」「自然感应」的威力取决于灵巧，但原始备注实际指定的是「造技」计算魔力时取魔力与灵巧中的较高值；因此「自然感应」取决于灵巧的效果不生效，且角色本身不能使用造技。'
+          end
         return [item]
       end
       if tag == 'スキルチェーン'
@@ -636,8 +667,16 @@ module GouqiActorAbilityReintroducer
             jp = "#{name_jp}強化 +#{amount}%"
             zh = "#{name_zh}强化 +#{amount}%"
           end
-          record(tag, jp, zh,
-                 'additive_percent', amount, "+#{amount}%", 'note', "<#{content}>")
+          item = record(tag, jp, zh,
+                        'additive_percent', amount, "+#{amount}%", 'note', "<#{content}>")
+          if actor_id == 627 && tag == '属性強化' && id == '68' && amount == '50'
+            item[:comment] = '原始备注为<属性強化 50-50,68-50>；属性ID 50是终焉属性，但68是技能类型ID「妖术」而不是属性ID，因此68-50无法作为属性强化生效。'
+          elsif actor_id == 845 && tag == '属性強化' && %w[49 50].include?(id) && amount == '10'
+            item[:comment] = '原始备注为<属性強化 10-49,10-50>，当前实际解析为暗属性强化49%与暗属性强化50%；这与固有能力描述中的永劫、终焉属性强化不符。作者可能原本想写永劫属性强化50%与终焉属性强化50%，但该推测需以原始数据或实测为准。'
+          elsif actor_id == 760 && tag == 'スキルタイプ強化' && %w[19 43 60 70].include?(id) && amount == '75'
+            item[:comment] = '该技能类型的+75%强化与同一角色另一条<スキルタイプ強化>标签中的同类+75%会叠加，因此铳技、器械、造技、混沌实际威力强化为+150%。'
+          end
+          item
         end
         append_record_comment(records, overwrite_comment)
         return records
@@ -697,7 +736,8 @@ module GouqiActorAbilityReintroducer
           state = lookup(lookups[:states], state_id, '状态')
           display = "+#{amount}%"
           zh_target = translate_name(target)
-          item = record(tag, "#{target}对#{state}特攻 #{display}", "#{zh_target.empty? ? target : zh_target}对#{state}的特攻伤害 #{display}", 'additive_percent', amount, display, 'note', "<#{content}>")
+          state_zh = normalize_state_name_zh(translate_name(state))
+          item = record(tag, "#{target}对#{state}特攻 #{display}", "#{zh_target.empty? ? target : zh_target}对#{state_zh}的特攻伤害 #{display}", 'additive_percent', amount, display, 'note', "<#{content}>")
           if actor_id == 183 && tag == 'ステート特攻スキルタイプ' && first == '58' && state_id == '28' && amount == '100'
             item[:comment] = '固有能力描述写成对拘束状态的敌人使用「触手技」可造成特攻伤害，但原始备注实际指定的是「植物技对拘束特攻伤害 +100%」，两者不符；角色本身不能使用植物技。'
           elsif actor_id == 864 && tag == 'ステート特攻スキルタイプ' && first == '69' && state_id == '23' && amount == '100'
@@ -749,11 +789,12 @@ module GouqiActorAbilityReintroducer
             jp = "#{target}使用時、#{subject_jp}に「#{state}」を#{amount}%の確率で付与"
             zh = "使用#{target_zh}时，以#{amount}%概率#{subject_zh}附加「#{state_zh}」状态"
           end
-          item = record(tag, jp, zh, 'chance', amount, "#{amount}%", 'note', "<#{content}>")
+          item = record(tag, jp, normalize_state_effect_description(zh), 'chance', amount, "#{amount}%", 'note', "<#{content}>")
           item[:zh] = normalize_self_state_description(item[:zh]) if tag.include?('自己')
           if actor_id == 126 && tag == 'スキルタイプステート敵付加' && skill_id == '21' && state_id == '393' && amount == '60'
             item[:comment] = '固有能力描述写成「造技」有几率使敌人陷入攻击力下降状态，但原始备注实际指定的是使用「格斗」时，以60%概率对敌人附加「攻击力下降」状态，两者不符；角色本身不能使用格斗。'
           end
+          item[:zh] = normalize_state_effect_description(item[:zh])
           item
         end
       when 'スキルステート付加', 'スキルステート自己付加'
@@ -792,9 +833,17 @@ module GouqiActorAbilityReintroducer
         return [] if pairs.empty?
         return pairs.map do |id, amount|
           name = tag.include?('タイプ') ? skill_type_lookup(lookups[:skill_types], id) : skill_lookup(lookups[:skills], id)
-          item = record(tag, "濒死时#{name}强化 +#{amount}%", "濒死时#{name}强化 +#{amount}%", 'additive_percent', amount, "+#{amount}%", 'note', "<#{content}>")
+          name_zh = translate_name(name)
+          if name.start_with?('発動：') || name_zh.start_with?('发动：')
+            jp = "瀕死時、スキル「#{name}」の威力 +#{amount}%"
+            zh = "濒死时，技能「#{name_zh}」的威力 +#{amount}%"
+          else
+            jp = "瀕死時#{name}強化 +#{amount}%"
+            zh = "濒死时#{name_zh}强化 +#{amount}%"
+          end
+          item = record(tag, jp, zh, 'additive_percent', amount, "+#{amount}%", 'note', "<#{content}>")
           if actor_id == 267 && tag == '窮地スキルタイプ強化' && id == '30' && amount == '100'
-            item[:comment] = '固有能力描述写成伴随HP减少「刀技」得到强化，但原始备注实际指定的是濒死时「盗贼技」强化 +100%，两者不符；角色本身不能使用格斗。'
+            item[:comment] = '固有能力描述写成伴随HP减少「刀技」得到强化，但原始备注实际指定的是濒死时「盗贼技」强化 +100%，两者不符；角色本身不能使用盗贼技。'
           end
           item
         end
@@ -1698,6 +1747,12 @@ module GouqiActorAbilityReintroducer
         item[:comment] = '原备注中只有扇技为26%，其余技能类型均为25%；可能是原数据笔误，但游戏实际按26%计算。'
       elsif tag == 'スキルタイプ強化' && pairs.any? { |id, _value| id == '64' }
         item[:comment] = '技能类型ID 64「装备武器」指由装备武器提供的技能，不是直接提高武器装备属性。'
+      elsif actor_id == 379 && tag == 'スキルタイプ強化' && pairs == [['7', '30'], ['8', '30']]
+        item[:comment] = '角色本身不能使用剑技和尖剑技，但初始状态已学会「尖剑技」相关技能，因此尖剑技威力+30%的效果可以发挥；剑技威力+30%对当前角色无效。'
+      elsif actor_id == 627 && tag == '属性強化' && pairs.any? { |id, _value| id == '68' }
+        item[:comment] = '原始备注为<属性強化 50-50,68-50>；属性ID 50是终焉属性，但68是技能类型ID「妖术」而不是属性ID，因此68-50无法作为属性强化生效。'
+      elsif actor_id == 845 && tag == '属性強化' && pairs == [['10', '49'], ['10', '50']]
+        item[:comment] = '原始备注为<属性強化 10-49,10-50>，当前实际解析为暗属性强化49%与暗属性强化50%；这与固有能力描述中的永劫、终焉属性强化不符。作者可能原本想写永劫属性强化50%与终焉属性强化50%，但该推测需以原始数据或实测为准。'
       elsif tag == '特殊カテゴリー被ダメージダウン' && pairs.map(&:first).uniq.length > 1
         item[:comment] = '攻击者同时属于多个列出的种族时，各种族的受伤倍率分别生效并相乘。'
       end
@@ -1963,6 +2018,9 @@ module GouqiActorAbilityReintroducer
       if actor_id == 728 && tag == 'TPタイプ消費率' && ids.sort == %w[26 53]
         item[:comment] = '圣技SP消耗量也增加33%（标签中的技能类型ID 26）；角色本身不能使用圣技。'
       end
+      if actor_id == 571 && tag == 'TPタイプ消費率' && ids.sort == ['18'] && value.to_f == 66.0
+        item[:comment] = '该标签使扇技SP消耗量变为66%（减少34%）；但角色本身不能使用扇技，因此当前无法实际发挥作用。'
+      end
       if [33, 35].include?(actor_id) && tag == 'HPタイプ消費率'
         item[:zh] = "使用#{target_zh}时，HP消耗量#{percent_ratio_phrase_zh(value)}"
         item[:comment] = "技能类型：#{id_name_entries(ids, collection, fallback)}"
@@ -2014,10 +2072,10 @@ module GouqiActorAbilityReintroducer
     def summarize_fixed_long_note(actor_id, tag, body, lookups, content)
       if actor_id == 525 && tag == '窮地スキル強化' && body.match?(/\A\s*12\s*-\s*100\s*\z/)
         item = record(tag,
-                      '瀕死時、棍技が強化される効果はこの形態では発動しない。スキル12はどのスキルタイプにも属さず、通常は使用不可',
-                      '濒死时「棍技」得到强化 +100% 的效果在此形态下不生效；技能12不属于任何一个技能分类，正常情况下不可用',
+                      '瀕死時、棍技強化 +100%。ただし、この形態では効果が発動しない',
+                      '濒死时「棍技」强化 +100%；但该效果在此形态下不生效',
                       'additive_percent', '100', '+100%', 'note', "<#{content}>")
-        item[:comment] = '作者将<窮地スキルタイプ強化 12-100>误写为<窮地スキル強化 12-100>；原意应为HP减少时强化「棍技」，但此形态下该效果不生效。技能12不属于任何一个技能分类，正常情况下不可用。'
+        item[:comment] = '作者原本应写<窮地スキルタイプ強化 12-100>（濒死时强化技能类型12「棍技」），却误写成了<窮地スキル強化 12-100>，导致12被按技能ID解析为不属于任何技能类型的「ぶんどる（抢夺）」，正常情况下不可用；此形态下该濒死强化效果不生效。'
         return [item]
       end
 
@@ -2032,7 +2090,7 @@ module GouqiActorAbilityReintroducer
                         '正史イリアス、ミカエラちゃん、ルシフィナちゃんがパーティにいる時、能力 ' + display,
                         '队伍中有正史伊莉娅丝、小米迦艾拉或小路西菲娜时，能力强化 ' + display + PARTY_ACTOR_ABILITY_SUFFIX,
                         'additive_percent', value, display, 'note', "<#{content}>")
-          item[:comment] = '对应角色：26（创世小女神）、27（创世女神）、28（创世混沌女神）、34（天之小军团长）、36（璀璨小明星）；26、27、28合并为正史伊莉娅丝。'
+          item[:comment] = '对应角色：26（创世小女神）、27（创世女神）、28（创世混沌女神）、34（小米迦艾拉）、36（小路西菲娜）；26、27、28合并为正史伊莉娅丝。'
           return [item]
         end
       end
@@ -2061,10 +2119,11 @@ module GouqiActorAbilityReintroducer
       source = "<#{content}>"
       if actor_id == 40 && tag == '特殊カテゴリー与ダメージアップスキルタイプ'
         display = "+#{value}%"
-        jp = "「銃技」でキメラに特攻ダメージ #{display}；「魔導科学」「マキナ」「医術」「造技」でキメラ・巨人・ロイドに特攻ダメージ #{display}"
-        zh = "使用「铳技」时，对奇美拉造成特攻伤害 #{display}；使用「魔导科学」「器械」「医术」「造技」时，对奇美拉、巨人和机器人造成特攻伤害 #{display}"
+        gun_display = "+#{value.to_i * 3}%"
+        jp = "「銃技」でキメラに特攻ダメージ #{gun_display}；「魔導科学」「マキナ」「医術」「造技」でキメラ・巨人・ロイドに特攻ダメージ #{display}"
+        zh = "使用「铳技」时，对奇美拉造成特攻伤害 #{gun_display}；使用「魔导科学」「器械」「医术」「造技」时，对奇美拉、巨人和机器人造成特攻伤害 #{display}"
         item = record(tag, jp, zh, 'additive_percent', value, display, 'note', source)
-        item[:comment] = '适用组合：技能类型19（铳技）→种族33（奇美拉）；技能类型40（魔导科学）、43（器械）、45（医术）、60（造技）→种族33（奇美拉）、37（巨人）、38（机器人）。原标签中的重复19-33-100按该角色已确认的非笛卡尔对应关系解释。'
+        item[:comment] = '适用组合：技能类型19（铳技）→种族33（奇美拉）；技能类型40（魔导科学）、43（器械）、45（医术）、60（造技）→种族33（奇美拉）、37（巨人）、38（机器人）。原标签中的19-33-100出现3次，游戏脚本会将同一组合的特攻增幅累加，因此铳技对奇美拉实际为+300%，对应特攻倍率为×4.0；其他组合各为+100%。'
         return [item]
       end
 
@@ -2358,7 +2417,12 @@ module GouqiActorAbilityReintroducer
       end
 
       value = values.first
-      display = "+#{value}%"
+      effective_value = if actor_id == 239 && triples.count { |target, state, amount| target == '58' && state == '21' && amount == value } == 2
+                          value.to_i * 2
+                        else
+                          value.to_i
+                        end
+      display = "+#{effective_value}%"
       jp_clauses = groups.map do |group|
         targets = group[:target_ids].map { |id| skill_type_lookup(lookups[:skill_types], id) }.join('、')
         states = group[:state_ids].map { |id| lookup(lookups[:states], id, '状态') }.join('、')
@@ -2370,7 +2434,7 @@ module GouqiActorAbilityReintroducer
         "#{targets}对#{states}的特攻伤害 #{display}"
       end
       item = record('ステート特攻スキルタイプ', jp_clauses.join('；'), zh_clauses.join('；'),
-                    'additive_percent', value, display, 'note', "<#{content}>")
+                    'additive_percent', effective_value.to_s, display, 'note', "<#{content}>")
       target_ids = triples.map(&:first).uniq
       state_ids = triples.map { |_target, state, _value| state }.uniq
       item[:comment] = [
@@ -2379,7 +2443,10 @@ module GouqiActorAbilityReintroducer
         state_effect_comment('スキルタイプステート敵付加', triples.uniq, lookups)
       ].join('；')
       if actor_id == 624 && triples.include?(%w[58 16 150])
-        item[:comment] = [item[:comment], '植物技对减速特攻 +150%', '角色本身不能使用植物技'].join('；') + '。'
+        item[:comment] = [item[:comment], '植物技对减速特攻 +150%这一项很可能是作者将应写的68-16-150（妖术对减速特攻）误写成了58-16-150；角色本身不能使用植物技'].join('；') + '。'
+      end
+      if actor_id == 239 && triples.count { |target, state, amount| target == '58' && state == '21' && amount == value } == 2
+        item[:comment] = [item[:comment], '原始备注中58-21-100（植物技对消化特攻）出现两次；游戏会将两条特攻增幅相加，因此实际为+200%，对应特攻倍率为×3.0。'].join('；')
       end
       if actor_id == 864 && triples.include?(%w[69 23 150])
         item[:comment] = [item[:comment], '该「巨技对黏滑特攻 +150%」与同一角色另一条「巨技对黏滑特攻 +100%」会相加，合计特攻增幅为 +250%，对应特攻倍率为 ×3.5。'].join('；')
@@ -2498,7 +2565,7 @@ module GouqiActorAbilityReintroducer
     end
 
     def skill_type_effect_name_zh(collection, id)
-      return '装备武器类技能' if id.to_i == 64
+      return '由装备武器提供的技能' if id.to_i == 64
 
       translate_name(skill_type_lookup(collection, id))
     end
@@ -2671,6 +2738,8 @@ module GouqiActorAbilityReintroducer
         "基本#{PARAM_NAMES[data_id.to_i] || "参数#{data_id}"}#{ratio_phrase_jp(value)}"
       when 22
         return hp_regeneration_text_jp(value) if data_id.to_i == 7
+        return mp_regeneration_text_jp(value) if data_id.to_i == 8
+        return tp_regeneration_text_jp(value) if data_id.to_i == 9
 
         name = XPARAM_NAMES[data_id.to_i] || "追加参数#{data_id}"
         "#{name}#{additive_phrase_jp(value)}"
@@ -2718,6 +2787,8 @@ module GouqiActorAbilityReintroducer
         "基础#{names[jp_name] || jp_name}#{ratio_phrase_zh(value)}"
       when 22
         return hp_regeneration_text_zh(value) if data_id.to_i == 7
+        return mp_regeneration_text_zh(value) if data_id.to_i == 8
+        return tp_regeneration_text_zh(value) if data_id.to_i == 9
 
         "#{XPARAM_NAMES_ZH[data_id.to_i] || "追加参数#{data_id}"}#{additive_phrase_zh(value)}"
       when 23
@@ -2754,6 +2825,18 @@ module GouqiActorAbilityReintroducer
       if actor_id.to_i == 724 && code.to_i == 41 && data_id.to_i == 45
         return '固有能力描述写成可以使用「忍术」「暗技」，但原始特性将 data_id=31（忍术）误写成了 data_id=45（医术），所以当前记录显示为可以使用「医术」；角色本身不能使用忍术，但初始职业「忍神」（ID 7030）可以让角色使用忍术。'
       end
+      if actor_id.to_i == 4 && code.to_i == 21 && data_id.to_i == 0 && [10.0, 6.0].include?(value.to_f)
+        return '角色同时拥有最大HP×1000%与×600%两项倍率；游戏按乘法合并，最终最大HP为基础值的60倍，即×6000%。'
+      end
+      if actor_id.to_i == 4 && code.to_i == 21 && data_id.to_i == 1 && [10.0, 5.0].include?(value.to_f)
+        return '角色同时拥有最大MP×1000%与×500%两项倍率；游戏按乘法合并，最终最大MP为基础值的50倍，即×5000%。'
+      end
+      if actor_id.to_i == 658 && code.to_i == 21 && data_id.to_i == 6 && value.to_f == 1.5
+        return '角色同时拥有两项基础敏捷×150%倍率；游戏按乘法合并，最终基础敏捷倍率为×225%。'
+      end
+      if actor_id.to_i == 998 && code.to_i == 21 && data_id.to_i == 2 && value.to_f == 10.0
+        return '角色同时拥有两项基础攻击力×1000%倍率；游戏按乘法合并，最终基础攻击力倍率为×10000%，即基础攻击力的100倍。'
+      end
       if code.to_i == 22 && data_id.to_i == 7
         return '游戏将多个HP再生率按“1 - ∏(1 - 各项数值)”合并；最终每回合HP变化量为最大HP×最终HP再生率，正值恢复HP，负值造成伤害。'
       end
@@ -2783,6 +2866,34 @@ module GouqiActorAbilityReintroducer
       return '每回合HP不发生变化' if amount.zero?
 
       amount > 0 ? "每回合恢复最大HP的#{percent(amount)}%" : "每回合受到最大HP的#{percent(amount.abs)}%伤害"
+    end
+
+    def mp_regeneration_text_jp(value)
+      amount = value.to_f * 100
+      return '毎ターン終了時、MPの自動回復なし' if amount.zero?
+
+      amount > 0 ? "毎ターン終了時、最大MPの#{percent(amount)}%を自動回復" : "毎ターン終了時、最大MPの#{percent(amount.abs)}%を失う"
+    end
+
+    def mp_regeneration_text_zh(value)
+      amount = value.to_f * 100
+      return '每回合结束时不自动恢复MP' if amount.zero?
+
+      amount > 0 ? "每回合结束时自动恢复最大MP的#{percent(amount)}%" : "每回合结束时失去最大MP的#{percent(amount.abs)}%"
+    end
+
+    def tp_regeneration_text_jp(value)
+      amount = value.to_f * 100
+      return '毎ターン終了時、SP（TP）の自動回復なし' if amount.zero?
+
+      amount > 0 ? "毎ターン終了時、最大SPの#{percent(amount)}%（切り上げ）を自動回復" : "毎ターン終了時、最大SPの#{percent(amount.abs)}%（切り上げ）を失う"
+    end
+
+    def tp_regeneration_text_zh(value)
+      amount = value.to_f * 100
+      return '每回合结束时不自动恢复SP（TP）' if amount.zero?
+
+      amount > 0 ? "每回合结束时自动恢复最大SP的#{percent(amount)}%（向上取整）" : "每回合结束时失去最大SP的#{percent(amount.abs)}%（向上取整）"
     end
 
     def guard_effect_rate_text_jp(value)
