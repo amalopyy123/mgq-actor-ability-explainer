@@ -273,6 +273,7 @@ module GouqiActorAbilityReintroducer
         records = []
         extract_traits(actor, actor_id, actor_name, lookups, records)
         extract_notes(actor, actor_id, actor_name, lookups, records)
+        append_actor_external_source_records(actor_id, lookups, records)
         annotate_duplicate_records(records)
         records.each_with_index do |record, order|
           @current_source_raw = record[:source_raw]
@@ -449,6 +450,21 @@ module GouqiActorAbilityReintroducer
       register_missing_translation(text)
     end
 
+    def append_actor_external_source_records(actor_id, lookups, records)
+      return unless actor_id == 75
+
+      class_name = lookup(lookups[:classes], 92, '职业')
+      source_raw = "其它来源：职业ID 92「#{class_name}」：<行動変化 28-50>"
+      item = record(
+        '行動変化',
+        "#{class_name}职业的行动变化：50%の確率で技能ID 28を選択",
+        "当前职业「#{class_name}」的行动变化：有50%概率选择技能ID 28",
+        'chance', '50', '50%', 'other_source', source_raw
+      )
+      item[:comment] = '该行动变化来自当前职业ID 92「游人」，不是角色75自身的固有能力。角色图鉴提到她有时会无视命令喝酒；但此标签指定的是技能ID 28「遊ぶ」，与酒饮技能ID 3154不同，因此不能据此认定技能ID 28本身就是喝酒行为。'
+      records << item
+    end
+
     def extract_traits(actor, actor_id, actor_name, lookups, records)
       features = actor.instance_variable_get(:@features) || []
       occurrences = Hash.new(0)
@@ -499,6 +515,18 @@ module GouqiActorAbilityReintroducer
         end
         content = match[1].to_s
         tag = GouqiActorPassiveExplainer.tag_name(content)
+        if actor_id == 143 && content == '初期アビリティ 3351'
+          generated = [record(
+            tag,
+            '器用貧乏淫魔：どんな職業・種族でも様々な職業スキルを使用できる；戦闘中、勝手にオラクル技を使用する事がある',
+            '笨拙淫魔：无论职业或种族，都可以使用各种职业技能；战斗中有时会擅自使用神谕技',
+            'ability', '3351', '能力ID 3351', 'note', line, 'translated', 'core'
+          )]
+          generated.first[:comment] = '这是角色143通过初期アビリティ 3351获得的能力，包含可使用各种职业技能，以及战斗中有时会擅自使用神谕技两项效果。'
+          generated.first[:duplicate_occurrence] = occurrence
+          records.concat(generated)
+          next
+        end
         skip_reason = skip_reason_for_note(tag, content)
         if skip_reason
           item = record(tag, '', '', 'skipped', '', '', 'note', line,
@@ -530,6 +558,8 @@ module GouqiActorAbilityReintroducer
             item[:jp] = '両手盾時に防具オブジェクトID 5212の特徴を有効化'
             item[:zh] = '双手盾时启用防具对象ID 5212的特征'
             item[:comment] = 'ID 5212指向防具对象而不是技能：该对象提供必中伤害率80%。双手盾时它会与能力对象5210同时加入角色特征，因此两个80%按相乘计算，必中攻击的最终伤害倍率为64%；它不会让角色获得或使用技能5212。'
+          elsif actor_id == 485 && line == '<速攻発動スキルタイプ:31>' && occurrence == 2
+            item[:comment] = '固有能力说明写的是“忍术连续发动两次”，但备注第二次重复的仍是“忍术速攻发动”；速攻效果不能叠加，因此这两条备注无法实现连续发动两次。作者很可能原本想写的是<連続発動タイプ 31-2>。'
           end
           if actor_id == 735 && line.include?('52-50')
             item[:comment] = '角色拥有粘液技使用权限，但初始状态没有学会任何粘液技技能，因此当前状态下没有可用的粘液技；只有学会粘液技技能后，相关强化才会实际发挥作用。'
@@ -624,6 +654,8 @@ module GouqiActorAbilityReintroducer
             item[:comment] = '固有能力描述为「盗贼技」计算魔力时取魔力与灵巧中的较高值，但角色本身不能使用盗贼技；盗贼技本身也不采用魔力计算，因此该效果实际不生效。'
           elsif actor_id == 678 && stype_ids == [60] && source_id == 3 && replacement_id == 6
             item[:comment] = '固有能力描述为「格斗」「自然感应」的威力取决于灵巧，但原始备注实际指定的是「造技」计算魔力时取魔力与灵巧中的较高值；因此「自然感应」取决于灵巧的效果不生效，且角色本身不能使用造技。'
+          elsif [397, 398, 399, 400].include?(actor_id) && stype_ids == [60] && source_id == 1 && replacement_id == 6
+            item[:comment] = '固有能力描述写成「造技」的威力取决于敏捷，但原始备注<能力値置き換え 60,1,6>实际效果是造技计算攻击力时，取攻击力与灵巧中的较高值。两者不一致；能力值ID 5为敏捷、ID 6为灵巧，因此很可能是作者误将5写成了6。当前应以原始备注的实际效果为准。'
           end
         return [item]
       end
@@ -633,7 +665,9 @@ module GouqiActorAbilityReintroducer
         names_jp = ids.map { |id| skill_type_lookup(lookups[:skill_types], id) }
         names_zh = names_jp.map { |name| translate_name(name) }
         item = record(tag, "#{names_jp.join('→')}スキルチェーン", "#{names_zh.join('→')}技能链", 'id_list', ids.join(','), '', 'note', "<#{content}>")
-        if actor_id == 493 && ids == [26, 15, 25]
+        if actor_id == 479 && ids == [11, 59, 62]
+          item[:comment] = '固有能力说明写成「吐息」之后可以连锁发动「斧技」，但原始备注实际指定的是「斧技→尸技→吐息」三段技能链；因此当前备注并不是“吐息→斧技”的两段链。'
+        elsif actor_id == 493 && ids == [26, 15, 25]
           item[:comment] = '原始备注指定技能链为「圣技→鞭技→召唤术」，但同一组固有能力中的其他相关标签均作用于弓技，因此很可能是作者误将技能类型ID 14（弓技）写成了15（鞭技）。角色已通过职业获得鞭技使用权限，但初始状态没有学会任何鞭技技能，因此当前无法完整发动该技能链。'
         elsif actor_id == 752 && ids == [17, 54, 27]
           item[:comment] = '固有能力描述写成「暗技或尸技」「蛇技」「铁球技」可按顺序连锁发动，但原始备注实际指定的是「铁球技→蛇技→暗技」。角色已通过拉米亚系种族获得蛇技使用权限，并已学会多项蛇技；铁球技和暗技也可以使用，因此该技能链可以正常发动。'
@@ -668,6 +702,8 @@ module GouqiActorAbilityReintroducer
                         'additive_percent', amount, "+#{amount}%", 'note', "<#{content}>")
           if actor_id == 627 && tag == '属性強化' && id == '68' && amount == '50'
             item[:comment] = '原始备注为<属性強化 50-50,68-50>；属性ID 50是终焉属性，但68是技能类型ID「妖术」而不是属性ID，因此68-50无法作为属性强化生效。'
+          elsif actor_id == 398 && tag == '属性強化' && id == '41' && amount == '50'
+            item[:comment] = '固有能力描述写的是物理、重力属性攻击威力提升，但原始备注<属性強化 1-50,41-50>实际指定了物理属性（ID 1）和银河属性（ID 41）。因此银河属性这一项与固有能力描述不一致，很可能是作者将重力属性ID 40误写成了银河属性ID 41；当前应以原始备注的实际效果为准。'
           elsif actor_id == 845 && tag == '属性強化' && %w[49 50].include?(id) && amount == '10'
             item[:comment] = '原始备注为<属性強化 10-49,10-50>，当前实际解析为暗属性强化49%与暗属性强化50%；这与固有能力描述中的永劫、终焉属性强化不符。作者可能原本想写永劫属性强化50%与终焉属性强化50%，但该推测需以原始数据或实测为准。'
           elsif actor_id == 760 && tag == 'スキルタイプ強化' && %w[19 43 60 70].include?(id) && amount == '75'
@@ -794,6 +830,8 @@ module GouqiActorAbilityReintroducer
             item[:comment] = '固有能力描述写成「造技」有几率使敌人陷入攻击力下降状态，但原始备注实际指定的是使用「格斗」时，以60%概率对敌人附加「攻击力下降」状态，两者不符；角色本身不能使用格斗。'
           elsif actor_id == 804 && tag == 'スキルタイプステート敵付加' && skill_id == '24' && state_id == '24' && amount == '30'
             item[:comment] = '固有能力描述写成使用「弓技」使敌人频繁陷入敏感状态，但原始备注实际指定的是使用「时魔法」时，以30%概率对敌人附加「敏感」状态；角色本身不能使用时魔法，因此该效果当前无法发挥。结合固有能力描述以及相邻标签均以弓技（技能类型ID 14）为对象，作者很可能将应写的14-24-30误写成了24-24-30，即误将技能类型ID也写成了敏感状态的ID 24。'
+          elsif actor_id == 195 && tag == 'スキルタイプステート敵付加' && skill_id == '23' && state_id == '26' && amount == '30'
+            item[:comment] = '固有能力描述写成「黑魔法」有几率使敌人陷入「敏感」状态，但原始备注实际指定的是使用黑魔法时，以30%概率对敌人附加「诱惑」状态（状态ID 26）；这里应以原始备注解析结果为准，并非敏感状态。'
           end
           item[:zh] = normalize_state_effect_description(item[:zh])
           item
@@ -844,7 +882,7 @@ module GouqiActorAbilityReintroducer
           end
           item = record(tag, jp, zh, 'additive_percent', amount, "+#{amount}%", 'note', "<#{content}>")
           if actor_id == 267 && tag == '窮地スキルタイプ強化' && id == '30' && amount == '100'
-            item[:comment] = '游戏中的固有能力说明写成伴随HP减少「刀技」得到强化，但原始备注实际指定的是濒死时「盗贼技」强化 +100%，两者不符。本CSV已按原始备注输出为“濒死时盗贼技强化 +100%”。角色本身不能使用盗贼技，因此该强化当前无法发挥。'
+            item[:comment] = '游戏中的固有能力说明写成伴随HP减少「刀技」得到强化，但原始备注实际指定的是濒死时「盗贼技」强化 +100%，两者不符。角色本身不能使用盗贼技，因此该强化当前无法发挥。'
           end
           item
         end
@@ -1376,7 +1414,9 @@ module GouqiActorAbilityReintroducer
         # does not contain every skill type and otherwise produced empty arrows.
         names_zh = names_jp.map { |name| translate_name(name) }
         item = record(tag, "#{names_jp.join('→')}スキルチェーン", "#{names_zh.join('→')}技能链", 'id_list', ids.join(','), '', 'note', "<#{content}>")
-        if actor_id == 493 && ids == [26, 15, 25]
+        if actor_id == 489 && ids == [26, 21, 26]
+          item[:comment] = '固有能力描述写成「投掷技或白魔法→格斗→圣技」，但原始备注实际指定的是「圣技→格斗→圣技」；技能类型ID 16 才是投掷技，ID 26 是圣技，因此很可能是作者将16误写成了26。当前这条备注不能由投掷技起手；另一条「白魔法→格斗→圣技」技能链仍可正常发动。'
+        elsif actor_id == 493 && ids == [26, 15, 25]
           item[:comment] = '原始备注指定技能链为「圣技→鞭技→召唤术」，但同一组固有能力中的其他相关标签均作用于弓技，因此很可能是作者误将技能类型ID 14（弓技）写成了15（鞭技）。角色已通过职业获得鞭技使用权限，但初始状态没有学会任何鞭技技能，因此当前无法完整发动该技能链。'
         end
         [item]
@@ -1394,8 +1434,12 @@ module GouqiActorAbilityReintroducer
           cn_name = translate_name(jp_name)
           display = multiplier_display(value_text)
           item = record(tag, "#{jp_name}#{cost_type}消費量#{percent_ratio_phrase_jp(value_text)}", "#{cn_name.empty? ? jp_name : cn_name}#{cost_type}消耗量#{percent_ratio_phrase_zh(value_text)}", 'multiplier', value_text, display, 'note', "<#{content}>")
-          if actor_id == 571 && tag == 'TPタイプ消費率' && id_text == '18' && value_text.to_f == 66.0
+          if actor_id == 502 && tag == 'TPタイプ消費率' && id_text == '43' && value_text.to_f == 300.0
+            item[:comment] = '固有能力说明写成「器械」SP消耗量变为2倍（200%），但原始备注<TPタイプ消費率 43,300%>实际使技能类型ID 43「器械」的SP消耗量变为300%（增加200%），即3倍；两者不一致。'
+          elsif actor_id == 571 && tag == 'TPタイプ消費率' && id_text == '18' && value_text.to_f == 66.0
             item[:comment] = '该标签使扇技SP消耗量变为66%（减少34%）；但角色本身不能使用扇技，因此当前无法实际发挥作用。'
+          elsif actor_id == 442 && tag == 'MPタイプ消費率' && id_text == '22' && value_text.to_f == 66.0
+            item[:comment] = '固有能力说明写成「白魔法」MP消耗减半（50%），但原始备注<MPタイプ消費率 22-66>实际使技能类型ID 22「白魔法」的MP消耗量变为66%（减少34%），不是减半。'
           end
           item
         end
@@ -1403,7 +1447,11 @@ module GouqiActorAbilityReintroducer
         value = body.match(/([+-]?\d+)/)
         return [] unless value
         display = multiplier_display(value[1])
-        return [record(tag, "技能チェーン消費量#{percent_ratio_phrase_jp(value[1])}", "技能链消耗量#{percent_ratio_phrase_zh(value[1])}", 'multiplier', value[1], display, 'note', "<#{content}>")]
+        item = record(tag, "技能チェーン消費量#{percent_ratio_phrase_jp(value[1])}", "技能链消耗量#{percent_ratio_phrase_zh(value[1])}", 'multiplier', value[1], display, 'note', "<#{content}>")
+        if actor_id == 483 && value[1].to_f == 25.0
+          item[:comment] = '固有能力说明写成连锁发动技能的MP及SP消耗减半（50%），但原始备注<チェーン消費軽減 25%>实际使技能链消耗量变为25%（减少75%），不是减半；该标签同时作用于技能链中的MP和SP消耗。'
+        end
+        [item]
       when '能力値置き換え'
         parsed = parse_stat_replacement(body)
         return [] unless parsed
@@ -1788,6 +1836,8 @@ module GouqiActorAbilityReintroducer
         item[:comment] = '技能类型ID 64「装备武器」指由装备武器提供的技能，不是直接提高武器装备属性。'
       elsif actor_id == 627 && tag == '属性強化' && pairs.any? { |id, _value| id == '68' }
         item[:comment] = '原始备注为<属性強化 50-50,68-50>；属性ID 50是终焉属性，但68是技能类型ID「妖术」而不是属性ID，因此68-50无法作为属性强化生效。'
+      elsif actor_id == 398 && tag == '属性強化' && pairs.include?(['1', '50']) && pairs.include?(['41', '50'])
+        item[:comment] = '固有能力描述写的是物理、重力属性攻击威力提升，但原始备注<属性強化 1-50,41-50>实际指定了物理属性（ID 1）和银河属性（ID 41）。因此银河属性这一项与固有能力描述不一致，很可能是作者将重力属性ID 40误写成了银河属性ID 41；当前应以原始备注的实际效果为准。'
       elsif actor_id == 845 && tag == '属性強化' && pairs == [['10', '49'], ['10', '50']]
         item[:comment] = '原始备注为<属性強化 10-49,10-50>，当前实际解析为暗属性强化49%与暗属性强化50%；这与固有能力描述中的永劫、终焉属性强化不符。作者可能原本想写永劫属性强化50%与终焉属性强化50%，但该推测需以原始数据或实测为准。'
       elsif actor_id == 998 && tag == 'スキルタイプ強化' && pairs == [['7', '50'], ['10', '50'], ['21', '50'], ['20', '50']]
@@ -1978,6 +2028,9 @@ module GouqiActorAbilityReintroducer
       end
 
       item = record(tag, jp, zh, value_type, value, display, 'note', "<#{content}>")
+      if actor_id == 448 && tag == 'TPスキル消費率'
+        item[:comment] = '固有能力说明写成使用粘丝的技能SP消耗变为1/5（20%），但原始备注实际只指定了10个具体技能，且这些技能的SP消耗量均变为50%（减少50%），并非20%（减少80%）；因此消耗倍率和适用范围都与固有能力说明不一致。'
+      end
       return [item] if item[:zh].length <= INLINE_DESCRIPTION_LIMIT
 
       fallback_jp, fallback_zh = LONG_TARGET_OVERRIDES.fetch(
@@ -2000,6 +2053,9 @@ module GouqiActorAbilityReintroducer
         item[:zh] = "#{fallback_zh}的异常状态附加率 #{display}"
       end
       item[:comment] = "技能：#{id_name_entries(ids, lookups[:skills], '技能')}"
+      if actor_id == 448 && tag == 'TPスキル消費率'
+        item[:comment] = '固有能力说明写成使用粘丝的技能SP消耗变为1/5（20%），但原始备注实际只指定了10个具体技能，且这些技能的SP消耗量均变为50%（减少50%），并非20%（减少80%）；因此消耗倍率和适用范围都与固有能力说明不一致。'
+      end
       [item]
     end
 
@@ -2059,6 +2115,9 @@ module GouqiActorAbilityReintroducer
       end
       if actor_id == 571 && tag == 'TPタイプ消費率' && ids.sort == ['18'] && value.to_f == 66.0
         item[:comment] = '该标签使扇技SP消耗量变为66%（减少34%）；但角色本身不能使用扇技，因此当前无法实际发挥作用。'
+      end
+      if actor_id == 442 && tag == 'TPタイプ消費率' && ids.sort == %w[15 58] && value.to_f == 66.0
+        item[:comment] = '固有能力说明写成「鞭技」「植物技」SP消耗减半（50%），但原始备注<TPタイプ消費率 15-66,58-66>实际使鞭技和植物技的SP消耗量均变为66%（减少34%），不是减半。'
       end
       if [33, 35].include?(actor_id) && tag == 'HPタイプ消費率'
         item[:zh] = "使用#{target_zh}时，HP消耗量#{percent_ratio_phrase_zh(value)}"
