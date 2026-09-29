@@ -503,6 +503,9 @@ module GouqiActorAbilityReintroducer
         if skip_reason
           item = record(tag, '', '', 'skipped', '', '', 'note', line,
                         "skipped_#{skip_reason}", 'skipped')
+          if actor_id == 861 && line == '<初期装備1,0:4825>'
+            item[:comment] = '该标签的格式错误，游戏无法解析，会将其完全忽略。角色具备双持能力，且上一条标签已在主手装备武器ID 4825「エクゼキューショナー」；这里原本应写为<初期装備1:4825>，使副手也装备同一把武器。受此错误影响，角色初始状态的副手为空，实际少装备一把该武器，也无法获得第二把武器提供的属性、特征及插槽效果。'
+          end
           item[:duplicate_occurrence] = occurrence
           records << item
           next
@@ -519,9 +522,6 @@ module GouqiActorAbilityReintroducer
         generated.each do |item|
           item[:source_raw] = line
           item[:original_text] = line if item[:source] == 'note'
-          if actor_id == 861 && line == '<初期装備1,0:4825>'
-            item[:comment] = '原始备注将初始装备标签误写为「<初期装備1,0:4825>」；标准格式应使用冒号分隔槽位与装备ID。该格式错误可能导致引擎容错解析异常，尤其可能影响副手或副武器的读取。'
-          end
           if actor_id == 657 && line == '<両手盾時能力:5210>'
             item[:jp] = '両手盾時に防具オブジェクトID 5210の特徴を有効化'
             item[:zh] = '双手盾时启用防具对象ID 5210的特征'
@@ -883,9 +883,13 @@ module GouqiActorAbilityReintroducer
         pairs = body.scan(/(\d+)-(\d+)/)
         return [] if pairs.empty?
         return pairs.map do |first, second|
-          a = lookup(lookups[:states], first, '状态')
-          b = lookup(lookups[:states], second, '状态')
-          record(tag, "#{a}连锁#{b}", "#{a}连锁#{b}", 'id_pair', "#{first}-#{second}", '', 'note', "<#{content}>")
+          trigger_jp = lookup(lookups[:states], first, 'ステート')
+          chained_jp = lookup(lookups[:states], second, 'ステート')
+          trigger_zh = state_name_zh(lookups, first)
+          chained_zh = state_name_zh(lookups, second)
+          jp = "自身に「#{trigger_jp}」（ステートID #{first}）が新たに付与された時、「#{chained_jp}」（ステートID #{second}）を自動付与"
+          zh = "自身新获得「#{trigger_zh}」（状态ID #{first}）时，自动附加「#{chained_zh}」（状态ID #{second}）"
+          record(tag, jp, zh, 'id_pair', "#{first}-#{second}", '', 'note', "<#{content}>")
         end
       when '全攻撃属性付加'
         ids = body.scan(/\d+/)
@@ -1111,7 +1115,7 @@ module GouqiActorAbilityReintroducer
           jp = "全通常種族への特攻強化 +#{amount}%（#{excluded_jp}を除く）"
           zh = "对所有通常种族的特攻强化 +#{amount}%（不含#{excluded_zh.join('、')}）"
           item = record(tag, jp, zh, 'additive_percent', amount, "+#{amount}%", 'note', "<#{content}>")
-          item[:comment] = '原始标签列出了特殊类别ID 10至35中的全部已定义类别，以及ID 37、38；ID 36在原版和汉化版游戏脚本中均未定义类别名称，属于编号空缺。标签未包含39（梦魔）、40（飞行）、41（神）和42（魔王），因此强化不适用于这四类目标；其中ID 41在游戏脚本中明确为“神”，不是“世界神”。'
+          item[:comment] = '原始标签列出了特殊类别ID 10至35中的全部已定义类别，以及ID 37、38；ID 36在原版和汉化版游戏脚本中均未定义类别名称，属于编号空缺。标签未包含39（梦魔）、40（飞行）、41（神）和42（魔王），因此强化不适用于这四类目标。'
           return [item]
         end
         return pairs.map do |category_id, amount|
@@ -1157,7 +1161,11 @@ module GouqiActorAbilityReintroducer
         condition_ids = match[5].to_s.scan(/\d+/).map(&:to_i)
         condition = auto_skill_condition_text(condition_type, condition_ids, lookups)
         jp_action = "#{timing_jp}#{match[3]}%で#{skill}を発動#{priority_jp}"
-        zh_action = "#{timing_zh}#{match[3]}%发动#{skill_zh}#{priority_zh}"
+        zh_action = if tag == 'ターン終了時発動'
+                      "#{timing_zh}有#{match[3]}%概率发动#{skill_zh}#{priority_zh}"
+                    else
+                      "#{timing_zh}#{match[3]}%发动#{skill_zh}#{priority_zh}"
+                    end
         jp = condition ? "#{condition[0]}、#{jp_action}" : jp_action
         zh = condition ? "#{condition[1]}，#{zh_action}" : zh_action
         return [record(tag, jp, zh, 'chance', match[3], "#{match[3]}%", 'note', "<#{content}>")]
@@ -2103,8 +2111,8 @@ module GouqiActorAbilityReintroducer
     def summarize_fixed_long_note(actor_id, tag, body, lookups, content)
       if actor_id == 525 && tag == '窮地スキル強化' && body.match?(/\A\s*12\s*-\s*100\s*\z/)
         item = record(tag,
-                      '瀕死時、棍技強化 +100%。ただし、この形態では効果が発動しない',
-                      '濒死时「棍技」强化 +100%；但该效果在此形态下不生效',
+                      '瀕死時、スキルID 12「ぶんどる」（スキルタイプなし）強化 +100%',
+                      '濒死时技能ID 12「抢夺」（无技能类型）强化 +100%',
                       'additive_percent', '100', '+100%', 'note', "<#{content}>")
         item[:comment] = '作者原本应写<窮地スキルタイプ強化 12-100>（濒死时强化技能类型12「棍技」），却误写成了<窮地スキル強化 12-100>，导致12被按技能ID解析为不属于任何技能类型的「ぶんどる（抢夺）」，正常情况下不可用；此形态下该濒死强化效果不生效。'
         return [item]
@@ -2480,7 +2488,7 @@ module GouqiActorAbilityReintroducer
         item[:comment] = [item[:comment], '固有能力描述写成对燃烧、冻结、电击状态的敌人使用「尖剑」可造成大量特攻伤害，但原始备注实际仅指定尖剑技、刀技、枪技对燃烧的特攻伤害 +150%，没有对冻结或电击的特攻效果。角色已通过职业获得刀技使用权限，但初始状态没有学会任何刀技技能，因此当前没有可用的刀技；角色本身不能使用枪技。因此当前只有尖剑技部分可以发挥，学会刀技技能后，刀技部分也能发挥。'].join('；')
       end
       if actor_id == 119 && triples == [['12', '15', '100'], ['42', '15', '100']]
-        item[:comment] = [item[:comment], '固有能力描述写成使用「魔本术」对麻痹、电击状态的敌人可造成特攻伤害，但原始备注实际仅指定对电击的特攻伤害 +100%，没有对麻痹的特攻效果；其中棍技（技能类型ID 12）对电击的特攻对角色本身无效，因为角色本身不能使用棍技。'].join('；')
+        item[:comment] = [item[:comment], '固有能力描述写成使用「魔本术」对麻痹、电击状态的敌人可造成特攻伤害，但原始备注实际仅指定对电击的特攻伤害 +100%，没有对麻痹的特攻效果；角色本身不能使用棍技。'].join('；')
       end
       if actor_id == 239 && triples.count { |target, state, amount| target == '58' && state == '21' && amount == value } == 2
         item[:comment] = [item[:comment], '原始备注中58-21-100（植物技对消化特攻）出现两次；游戏会将两条特攻增幅相加，因此实际为+200%，对应特攻倍率为×3.0。'].join('；')
