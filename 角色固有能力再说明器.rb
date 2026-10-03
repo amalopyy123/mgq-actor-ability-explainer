@@ -96,6 +96,29 @@ module GouqiActorAbilityReintroducer
   ACTOR_NAME_TRANSLATIONS = {
     80 => '希普'
   }.freeze
+  # These IDs are intrinsic-only in the current skill and ability data.
+  INTRINSIC_ONLY_ABILITY_IDS = [
+    873, 874, 875, 876, 880, 6515, 7659, 7706, 8591, 8592, 10035, 10036, 10075
+  ].freeze
+  INTRINSIC_ONLY_SKILL_IDS = [
+    4, 8, 10, 967, 1000, 1134, 1135, 1136, 1491, 1527, 1627, 1628, 1629, 1630,
+    1633, 1644, 1658, 1659, 1671, 1674, 1675, 1683, 1809, 1860, 2066, 2067, 2084,
+    2105, 2106, 2357, 2514, 2618, 2674, 2753, 2754, 2770, 2824, 2825, 2870, 2871,
+    2872, 2875, 2918, 2928, 2929, 2930, 2941, 3009, 3089, 3106, 3107, 3108, 3109,
+    3154, 3155, 3156, 3157, 3158, 3159, 3160, 3162, 3165, 3169, 3170, 3171, 3172,
+    3174, 3175, 5765, 5766, 5767, 5768, 5769, 5770, 5771, 5772, 5773, 5774, 5775,
+    5776, 5777, 5778, 5779, 5780, 5781, 5782, 5783, 5784, 5785, 5786, 5787, 5789,
+    5790, 5791, 5792, 5793, 5794, 5795, 5796, 5797, 5798, 5799, 5800, 5801, 5802,
+    5803, 5804, 5805, 5807, 5808, 5809, 5810, 5811, 5812, 5813, 5814, 5815, 5816,
+    5817, 5818, 5819, 5820, 5823, 5824, 5825, 5826, 5827, 5828, 5829, 5830, 5831,
+    5833, 5834, 5835, 5836, 5843, 5844, 5845, 5846, 5847, 5863, 5864, 5865, 5866,
+    5867, 5868, 5869, 5870, 5871, 5872, 5873, 5874, 5875, 5876, 5877, 5878, 5879,
+    5881, 5882, 5883, 5884, 5886, 5887, 5889, 5890, 5891, 5892, 5893, 5894, 5895,
+    5896, 5897, 5898, 5899, 5900, 5901, 5902, 5904, 5905, 5906, 5907, 5908, 5909,
+    5910, 6221, 9024, 9172, 9173, 9213, 9266, 9286, 9292, 9562, 9622, 9780, 9781,
+    9808, 10101
+  ].freeze
+  INTRINSIC_LEARNING_SPECIAL_ACTORS = [143, 540, 542, 603, 611].freeze
   MISSING_SOURCE_RAW_DESCRIPTIONS = {
     4 => ['两次行动', '混沌属性以外的伤害无效化', '受到的混沌属性的伤害变为1/4'],
     287 => ['可以使用自然感应'],
@@ -138,7 +161,7 @@ module GouqiActorAbilityReintroducer
     773 => '角色特性中没有提升基础敏捷或灵巧的参数特性。备注<能力値加算 9,1,5,50>和<能力値加算 9,6,5,50>只在计算刀技的攻击力、灵巧时分别追加敏捷的50%，不会提高角色的基础敏捷或灵巧。',
     775 => '角色特性和备注中均未找到对天使类别造成特攻伤害的配置；固有能力所述天使特攻没有对应的底层效果。',
     782 => '角色已有剑（code=51, data_id=2）、骑士剑（ID 3）、刀（ID 9）、忍者刀（ID 10）、棍（ID 14）和镰（ID 15）的装备权限，但没有巨剑装备权限（code=51, data_id=4）。',
-    866 => '角色自身的特性和备注中未找到物理完全回避或提升回避率的配置；本结论仅针对角色自身数据，不涵盖职业、装备或状态等战斗中可能获得的其他效果。',
+    866 => '角色自身的特性和备注中未找到物理完全回避或提升回避率的配置。',
     867 => '角色自身的特性和备注中未找到弓技（技能类型ID 14）的SP消耗倍率配置。',
     868 => '角色自身的特性和备注中未找到鞭技（技能类型ID 15）的SP消耗倍率配置。',
     869 => '角色自身的特性和备注中未找到格斗（技能类型ID 21）的SP消耗倍率配置。',
@@ -162,9 +185,9 @@ module GouqiActorAbilityReintroducer
     '魔法反撃' => ['魔法反撃', '魔法反击']
   }.freeze
   SUSPECTED_ATTRIBUTE_ID_NOTES = {
-    [898, 14] => '原标签按属性追加解析，但属性ID 14 与该角色相邻能力中的冻结状态ID相同，疑似作者误将状态ID写入属性参数；实际属性效果需在游戏中确认。',
-    [899, 13] => '原标签按属性追加解析，但属性ID 13 与该角色相邻能力中的燃烧状态ID相同，疑似作者误将状态ID写入属性参数；实际属性效果需在游戏中确认。',
-    [900, 15] => '原标签按属性追加解析，但属性ID 15 与该角色相邻能力中的电击状态ID相同，疑似作者误将状态ID写入属性参数；实际属性效果需在游戏中确认。'
+    [898, 14] => '原标签按属性追加解析，但属性ID 14 与该角色相邻能力中的冻结状态ID相同，疑似作者误将状态ID写入属性参数。',
+    [899, 13] => '原标签按属性追加解析，但属性ID 13 与该角色相邻能力中的燃烧状态ID相同，疑似作者误将状态ID写入属性参数。',
+    [900, 15] => '原标签按属性追加解析，但属性ID 15 与该角色相邻能力中的电击状态ID相同，疑似作者误将状态ID写入属性参数。'
   }.freeze
   ACTOR_NOTE_CORRECTIONS = {
     [28, '<TPタイプ消費率 14-133,26-133>'] => '固有能力描述写成「弓技」「白魔法」「圣技」的MP和SP消耗均增加1/3，但原始备注实际只将弓技（技能类型ID 14）和圣技（技能类型ID 26）的SP消耗量变为133%（增加33%）。白魔法（技能类型ID 22）没有配置SP消耗增加，同时也没有配置这三类技能的MP消耗增加，因此实际效果与固有能力描述不符。',
@@ -603,14 +626,14 @@ module GouqiActorAbilityReintroducer
 
         passive_name = skill_lookup(lookups[:skills], 873)
         drink_skill_name = skill_lookup(lookups[:skills], 3154)
-        passive_source_raw = "其它来源：固有习得技能ID 873「#{passive_name}」→被动防具对象ID 6363：code=22, data_id=2, value=0.2；code=22, data_id=6, value=0.25；<行動変化 3154-10>"
+        passive_source_raw = "其它来源：固有习得能力ID 873「#{passive_name}」→被动防具对象ID 6363：code=23, data_id=0, value=0.75；code=22, data_id=2, value=0.2；code=22, data_id=6, value=0.25；code=41, data_id=53, value=0.0；<行動変化 3154-10>"
         passive_item = record(
           '固有習得',
-          "固有習得パッシブスキル「#{passive_name}」：会心率+20%、反撃率+25%；10%の確率で当ターンの行動を「#{drink_skill_name}」に変更",
-          '固有习得被动技能「酒鬼羊」：会心率 +20%、反击率 +25%；有10%概率将当回合行动替换为喝酒技能「酒鬼」',
-          'composite', '20,25,3154-10', '', 'other_source', passive_source_raw
+          "固有習得パッシブ能力「#{passive_name}」装備時、獣技を使用可能、攻撃対象に選ばれる重み×75%、会心率+20%、反撃率+25%；10%の確率で当ターンの行動を「#{drink_skill_name}」に変更",
+          '装备固有习得被动能力「酒鬼羊」后，可以使用兽技；被选为攻击目标的权重变为75%；会心率 +20%、反击率 +25%；有10%概率将当回合行动替换为喝酒技能「酒鬼」',
+          'composite', '53,75,20,25,3154-10', '', 'other_source', passive_source_raw
         )
-        passive_item[:comment] = '角色75在Lv1通过<固有習得 1-873>习得被动技能「酒飲み羊」（酒鬼羊）。该技能引用被动防具对象ID 6363；对象提供会心率+20%、反击率+25%，并包含<行動変化 3154-10>。因此这些效果有明确的固有习得技能来源，不属于缺少source_raw。'
+        passive_item[:comment] = '角色75通过<固有習得 1-873>在Lv1习得被动能力ID 873「酒飲み羊」（酒鬼羊），但习得本身不代表能力已经装备。角色备注中的<初期アビリティ 3350>使用旧ID；旧ID替换表不会在解析角色备注时自动将其转换为873，因此需要手动装备能力873后上述效果才会生效。装备后，该能力引用的被动防具对象ID 6363会赋予兽技使用权限，使被选为攻击目标的权重变为75%、会心率提升20%、反击率提升25%，并有10%概率将当回合行动替换为技能ID 3154「酒飲み」。兽技使用权限不代表会自动学会具体兽技。'
         records << passive_item
 
         drunken_fist_source_raw = "其它来源：固有习得技能ID 3154「#{drink_skill_name}」→技能效果：状态ID 71「酔拳」100%"
@@ -625,35 +648,35 @@ module GouqiActorAbilityReintroducer
       elsif actor_id == 585
         ability_name = skill_lookup(lookups[:skills], 876)
         drink_skill_name = skill_lookup(lookups[:skills], 3154)
-        source_raw = "其它来源：固有习得技能ID 876「#{ability_name}」→被动防具对象ID 6367：<行動変化 3154-10>"
+        source_raw = "其它来源：固有习得能力ID 876「#{ability_name}」→被动防具对象ID 6367：<行動変化 3154-10>"
         item = record(
           '行動変化',
-          "固有習得パッシブスキル「#{ability_name}」による行動変化：10%の確率で当ターンの行動を「#{drink_skill_name}」に変更",
-          '固有习得被动技能「醉醺醺的船长」带来的行动变化：有10%概率将当回合行动替换为喝酒技能「酒鬼」',
+          "固有習得パッシブ能力「#{ability_name}」装備時、10%の確率で当ターンの行動を「#{drink_skill_name}」に変更",
+          '装备固有习得被动能力「醉醺醺的船长」后，有10%概率将当回合行动替换为喝酒技能「酒鬼」',
           'chance', '3154-10', '10%', 'other_source', source_raw
         )
-        item[:comment] = '角色585在Lv1通过<固有習得 1-876>习得被动技能「酔いどれおかしら」（醉醺醺的船长）；该技能引用被动防具对象ID 6367，而对象包含<行動変化 3154-10>。技能ID 3154「酒飲み」（中文名「酒鬼」）是喝酒技能，因此有10%概率将当回合行动替换为该技能。这是角色固有习得能力带来的效果，不是职业效果；与角色75的职业标签<行動変化 28-50>不同，后者指向「遊ぶ」而非喝酒技能。技能ID 3154会对使用者附加状态ID 71「酔拳」；获得「醉拳」是喝酒技能本身的通用状态效果，并非角色585独有。'
+        item[:comment] = '角色585通过<固有習得 1-876>在Lv1习得被动能力ID 876「酔いどれおかしら」（醉醺醺的船长），但习得本身不代表能力已经装备。角色备注中的<初期アビリティ 3353>使用旧ID；旧ID替换表不会在解析角色备注时自动将其转换为876，因此需要手动装备能力876后该行动变化才会生效。装备后，能力引用的被动防具对象ID 6367会以10%概率将当回合行动替换为技能ID 3154「酒飲み」（酒鬼）。该技能会对使用者附加状态ID 71「酔拳」；获得「醉拳」是喝酒技能本身的通用效果，并非角色585独有。与角色75的职业标签<行動変化 28-50>不同，后者指向「遊ぶ」而不是喝酒技能。'
         records << item
 
         pirate_name = skill_type_lookup(lookups[:skill_types], 32)
-        permission_source_raw = "其它来源：固有习得技能ID 876「#{ability_name}」→被动防具对象ID 6367：code=41, data_id=32, value=0.0"
+        permission_source_raw = "其它来源：固有习得能力ID 876「#{ability_name}」→被动防具对象ID 6367：code=41, data_id=32, value=0.0"
         permission_item = record(
           'skill',
-          "固有習得パッシブスキル「#{ability_name}」装備時、「#{pirate_name}」を使用可能",
-          '装备固有习得被动技能「醉醺醺的船长」后，可以使用「海贼技」',
+          "固有習得パッシブ能力「#{ability_name}」装備時、「#{pirate_name}」を使用可能",
+          '装备固有习得被动能力「醉醺醺的船长」后，可以使用海贼技',
           'boolean', '32', '', 'other_source', permission_source_raw
         )
-        permission_item[:comment] = '角色585在Lv1通过<固有習得 1-876>习得被动技能「酔いどれおかしら」（醉醺醺的船长）。该被动技能引用防具对象ID 6367；对象的code=41、data_id=32特征会在装备该被动技能时赋予海贼技的使用权限。因此该效果有明确的间接来源，不属于缺少source_raw；仅习得但未装备该被动技能时，效果不会生效。'
+        permission_item[:comment] = '角色585通过<固有習得 1-876>在Lv1习得被动能力ID 876「酔いどれおかしら」（醉醺醺的船长）。该能力引用被动防具对象ID 6367；装备后，对象的code=41、data_id=32特征会赋予海贼技使用权限，但不会自动学会具体海贼技。角色备注中的<初期アビリティ 3353>使用旧ID，无法自动装备当前能力876，因此需要手动装备后该效果才会生效。'
         records << permission_item
 
-        boost_source_raw = "其它来源：固有习得技能ID 876「#{ability_name}」→被动防具对象ID 6367：<スキルタイプ強化 32-30>"
+        boost_source_raw = "其它来源：固有习得能力ID 876「#{ability_name}」→被动防具对象ID 6367：<スキルタイプ強化 32-30>"
         boost_item = record(
           'skill_boost',
-          "固有習得パッシブスキル「#{ability_name}」装備時、「#{pirate_name}」威力 +30%",
-          '装备固有习得被动技能「醉醺醺的船长」后，海贼技威力 +30%',
+          "固有習得パッシブ能力「#{ability_name}」装備時、「#{pirate_name}」強化 +30%",
+          '装备固有习得被动能力「醉醺醺的船长」后，海贼技强化 +30%',
           'additive_percent', '30', '+30%', 'other_source', boost_source_raw
         )
-        boost_item[:comment] = '角色585的海贼技威力提升来自被动技能「酔いどれおかしら」引用的防具对象ID 6367；对象备注<スキルタイプ強化 32-30>会在装备该被动技能时使海贼技威力提升30%。因此该效果有明确的间接来源，不属于缺少source_raw。'
+        boost_item[:comment] = '角色585的海贼技强化来自被动能力「酔いどれおかしら」（醉醺醺的船长）引用的被动防具对象ID 6367。装备能力后，对象备注<スキルタイプ強化 32-30>会使海贼技强化30%。角色备注中的<初期アビリティ 3353>使用旧ID，无法自动装备当前能力876，因此需要手动装备后该效果才会生效。'
         records << boost_item
       end
     end
@@ -733,14 +756,22 @@ module GouqiActorAbilityReintroducer
         if actor_id == 143 && content == '初期アビリティ 3351'
           generated = [record(
             tag,
-            '旧ID 3351からパッシブ能力ID 874「器用貧乏淫魔」を初期装備',
-            '通过旧ID 3351初始装备被动能力ID 874「笨拙淫魔」',
+            '旧ID 3351はパッシブ能力ID 874「器用貧乏淫魔」に対応',
+            '备注中的旧ID 3351对应当前被动能力ID 874「笨拙淫魔」',
             'ability', '3351', '旧ID 3351→能力ID 874', 'note', line, 'translated', 'core'
           )]
-          generated.first[:comment] = '旧ID替换表会将能力ID 3351转换为当前能力ID 874，因此该标签能够让角色143初始装备被动能力「器用貧乏淫魔」（笨拙淫魔）。能力874的具体效果在<固有習得 1-2490,1-874>对应记录中说明。角色143与角色611不同：角色143的旧ID与固有习得能力正确对应，因此相关效果在初始状态下即可生效。'
+          generated.first[:comment] = '该标签使用旧ID 3351；当前能力ID为874「器用貧乏淫魔」（笨拙淫魔）。旧ID替换表只用于迁移存档中已经存在的技能或能力，不会在解析角色备注时把<初期アビリティ 3351>自动转换为874。因此角色143虽然通过<固有習得 1-2490,1-874>学会能力874，但这条初期能力标签不会自动装备874，相关效果需要手动装备能力874后才会生效。'
           generated.first[:duplicate_occurrence] = occurrence
           records.concat(generated)
           next
+        end
+        if tag == '固有習得'
+          intrinsic_summary = intrinsic_only_learning_summary(actor_id, content, lookups)
+          if intrinsic_summary
+            intrinsic_summary[:duplicate_occurrence] = occurrence
+            records << intrinsic_summary
+            next
+          end
         end
         skip_reason = skip_reason_for_note(actor_id, tag, content)
         if skip_reason
@@ -759,6 +790,16 @@ module GouqiActorAbilityReintroducer
           generated << record_from_raw(tag, line)
         end
         generated = consolidate_note_records(generated)
+        if tag == '固有習得' && [143, 611].include?(actor_id)
+          summary = intrinsic_only_learning_summary(actor_id, content, lookups, false, true)
+          if summary
+            generated.first[:jp] = summary[:jp]
+            generated.first[:zh] = summary[:zh]
+            generated.first[:value_type] = summary[:value_type]
+            generated.first[:value_raw] = summary[:value_raw]
+            generated.first[:value_display] = summary[:value_display]
+          end
+        end
         append_record_comment(generated, ACTOR_NOTE_CORRECTIONS[[actor_id, line]])
         if line != parse_line
           append_record_comment(generated, '原备注多写了一个“<”，但是仍能正常生效。')
@@ -778,7 +819,7 @@ module GouqiActorAbilityReintroducer
             item[:comment] = '固有能力说明写的是“忍术连续发动两次”，但备注第二次重复的仍是“忍术速攻发动”；速攻效果不能叠加，因此这两条备注无法实现连续发动两次。作者很可能原本想写的是<連続発動タイプ 31-2>。'
           end
           if actor_id == 735 && line.include?('52-50')
-            item[:comment] = '角色拥有粘液技使用权限，但初始状态没有学会任何粘液技技能，因此当前状态下没有可用的粘液技；只有学会粘液技技能后，相关强化才会实际发挥作用。'
+            item[:comment] = '角色拥有粘液技使用权限，但初始状态没有学会任何粘液技技能，因此当前状态下没有可用的粘液技。'
           end
           if actor_id == 760 && line.start_with?('<スキルタイプ強化') && line.match?(/(?:19|43|60|70)-75/)
             item[:comment] = '该技能类型的+75%强化与同一角色另一条<スキルタイプ強化>标签中的同类+75%会叠加，因此铳技、器械、造技、混沌实际威力强化为+150%。'
@@ -787,6 +828,65 @@ module GouqiActorAbilityReintroducer
         end
         records.concat(generated)
       end
+    end
+
+    def intrinsic_only_learning_summary(actor_id, content, lookups, include_all = false, allow_special = false)
+      return nil if !include_all && !allow_special && INTRINSIC_LEARNING_SPECIAL_ACTORS.include?(actor_id)
+
+      pairs = content.sub(/\A固有習得\s*/, '').scan(/(\d+)\s*-\s*(\d+)/)
+      selected = pairs.filter_map do |level, object_id|
+        object_id = object_id.to_i
+        intrinsic_only = INTRINSIC_ONLY_ABILITY_IDS.include?(object_id) || INTRINSIC_ONLY_SKILL_IDS.include?(object_id)
+        next unless include_all || intrinsic_only
+
+        skill = lookups[:skills] && lookups[:skills][object_id]
+        next unless skill
+
+        kind = INTRINSIC_ONLY_ABILITY_IDS.include?(object_id) ? :ability : :skill
+        {
+          level: level.to_i,
+          object_id: object_id,
+          kind: kind,
+          jp_name: skill_lookup(lookups[:skills], object_id),
+          zh_name: translate_name(skill_lookup(lookups[:skills], object_id))
+        }
+      end
+      return nil if selected.empty?
+
+      grouped = selected.group_by { |entry| entry[:level] }.sort_by(&:first)
+      jp_parts = grouped.map { |level, entries| intrinsic_learning_group_text(level, entries, false) }
+      zh_parts = grouped.map { |level, entries| intrinsic_learning_group_text(level, entries, true) }
+      source_pairs = selected.map { |entry| "#{entry[:level]}-#{entry[:object_id]}" }
+      item = record(
+        '固有習得',
+        jp_parts.join('；'),
+        zh_parts.join('；'),
+        'intrinsic_learning_summary',
+        source_pairs.join(','),
+        selected.map { |entry| entry[:object_id] }.join(','),
+        'note',
+        "<#{content}>"
+      )
+      item[:comment] = '这些技能或能力属于角色专属固有习得。' unless include_all
+      item
+    end
+
+    def intrinsic_learning_group_text(level, entries, chinese)
+      skill_names = entries.select { |entry| entry[:kind] == :skill }
+                          .map { |entry| chinese ? entry[:zh_name] : entry[:jp_name] }
+      ability_names = entries.select { |entry| entry[:kind] == :ability }
+                            .map { |entry| chinese ? entry[:zh_name] : entry[:jp_name] }
+      skill_label = chinese ? '技能' : 'スキル'
+      ability_label = chinese ? '能力' : 'アビリティ'
+      parts = []
+      parts << "#{skill_label}#{quoted_names(skill_names)}" unless skill_names.empty?
+      parts << "#{ability_label}#{quoted_names(ability_names)}" unless ability_names.empty?
+      text = parts.join(chinese ? '，' : '、')
+      level == 1 ? (chinese ? "习得#{text}" : "#{text}を習得") : "Lv#{level}#{chinese ? '习得' : ''}#{text}#{chinese ? '' : 'を習得'}"
+    end
+
+    def quoted_names(names)
+      names.map { |name| "「#{name}」" }.join('、')
     end
 
     # Keep one CSV record for one raw note while preserving every parsed effect.
@@ -872,9 +972,9 @@ module GouqiActorAbilityReintroducer
         display = "技能类型ID #{stype_ids.join(',')}：#{source_zh}与#{replacement_zh}取较高值"
         item = record(tag, jp, zh, 'stat_reference', body, display, 'note', "<#{content}>")
         if [163, 836].include?(actor_id) && stype_ids == [52] && source_id == 6 && replacement_id == 3
-          item[:comment] = '固有能力描述写成「触手技」的威力改为取决于魔力而非灵巧，但原始备注实际作用于「粘液技」：计算灵巧时取灵巧与魔力中的较高值，两者不符。角色的种族本身拥有粘液技使用权限，但初始状态没有学会任何粘液技技能，因此当前没有可用的粘液技；学会粘液技技能后，该效果才能发挥。'
+          item[:comment] = '固有能力描述写成「触手技」的威力改为取决于魔力而非灵巧，但原始备注实际作用于「粘液技」：计算灵巧时取灵巧与魔力中的较高值，两者不符。角色的种族本身拥有粘液技使用权限，但初始状态没有学会任何粘液技技能，因此当前没有可用的粘液技。'
         elsif actor_id == 493 && stype_ids == [15]
-          item[:comment] = '原始备注指定的是「鞭技」（技能类型ID 15），但同一组固有能力中的其他相关标签均作用于「弓技」（技能类型ID 14），因此很可能是作者误将14写成了15。角色已通过职业获得鞭技使用权限，但初始状态没有学会任何鞭技技能，因此当前没有可用的鞭技；学会鞭技技能后，该效果才能发挥。'
+          item[:comment] = '原始备注指定的是「鞭技」（技能类型ID 15），但同一组固有能力中的其他相关标签均作用于「弓技」（技能类型ID 14），因此很可能是作者误将14写成了15。角色已通过职业获得鞭技使用权限，但初始状态没有学会任何鞭技技能，因此当前没有可用的鞭技。'
          elsif actor_id == 845 && stype_ids == [11] && source_id == 1 && replacement_id == 4
            item[:comment] = '固有能力描述中包含「棍技」的相关效果，但原始备注实际写成了「斧技计算攻击力时，取攻击力与精神力中的较高值」（技能类型ID 11）；角色本身不能使用斧技，该效果对角色本身无效。作者原本想写的应是「棍技」（技能类型ID 12），可能误将12写成了11。'
           elsif actor_id == 999 && stype_ids == [30] && source_id == 3 && replacement_id == 6
@@ -990,21 +1090,21 @@ module GouqiActorAbilityReintroducer
           name = skill_lookup(lookups[:skills], skill_id)
           item = record(tag, "Lv#{level}で#{name}を習得", "Lv#{level}习得#{name}", 'id_pair', "#{level}-#{skill_id}", '', 'note', "<#{content}>")
           if actor_id == 143 && level == '1' && skill_id == '874'
-            item[:jp] = 'Lv1でパッシブ能力「器用貧乏淫魔」を習得'
-            item[:zh] = 'Lv1习得被动能力「笨拙淫魔」'
-            item[:comment] = '该标签表示角色在Lv1学会被动能力ID 874「器用貧乏淫魔」（笨拙淫魔）；习得本身不代表能力已经装备，但角色备注中的<初期アビリティ 3351>会通过旧ID替换关系3351→874，将该能力设为初始装备，因此相关效果能够正常生效。装备后，能力引用的被动防具对象ID 6364会赋予盗贼技、商技、神谕、舞蹈、歌唱、交谈、料理、医术、侍奉和淫技的使用权限，但不会强化这些技能的威力。该对象还会依次判定三种行动变化：有10%概率发动技能ID 1993「命运塔罗牌」；前一项未触发时，有10%概率发动技能ID 1995「老虎机」；前两项均未触发时，有3%概率发动技能ID 1989「抛硬币」。三者均为神谕技，至少发动其中一种的实际概率约为21.43%。因此，“战斗中有时会擅自使用神谕技”的效果可以正常生效，并不存在角色611那样的初期能力ID配置错误。'
+            item[:jp] = 'アビリティ「器用貧乏淫魔」を習得'
+            item[:zh] = '习得能力「笨拙淫魔」'
+            item[:comment] = '该标签表示角色在Lv1学会被动能力ID 874「器用貧乏淫魔」（笨拙淫魔）；习得本身不代表能力已经装备。角色备注中的<初期アビリティ 3351>使用旧ID，旧ID替换表不会在解析角色备注时自动将其转换为874，因此角色143不会自动装备能力874，相关效果需要手动装备后才会生效。装备后，能力引用的被动防具对象ID 6364会赋予盗贼技、商技、神谕、舞蹈、歌唱、交谈、料理、医术、侍奉和淫技的使用权限，但不会强化这些技能。该对象还提供三个行动变化候选：技能ID 1993「命运塔罗牌」和技能ID 1995「老虎机」的单次判定概率各为10%，技能ID 1989「抛硬币」的单次判定概率为3%。游戏会在每次行动变化判定时随机打乱候选顺序，并逐项判定，触发其中一项后停止；三者至少触发一项的总概率约为21.43%，但各技能最终发动的概率会受随机顺序影响。因此，“战斗中有时会擅自使用神谕技”的效果只有在装备能力874后才会生效。'
           elsif actor_id == 542 && level == '1' && skill_id == '875'
-            item[:jp] = 'Lv1でパッシブ能力「残念なマーメイド」を習得'
-            item[:zh] = 'Lv1习得被动能力「残念的人鱼」'
-            item[:comment] = '该标签只表示角色在Lv1学会被动能力ID 875「残念なマーメイド」（残念的人鱼），不代表该能力已经装备或立即生效。装备后，能力引用的被动防具对象ID 6366会使所有技能的金币消耗量变为50%（并非只按「商技」类型判断）、被选为攻击目标的权重变为25%，并有3%概率将当回合行动替换为技能ID 3303「遊ぶ：強制死亡」。角色备注中的<初期アビリティ 3352>使用的是该能力的旧ID；当前能力ID已替换为875，因此这条初期能力标签无法自动装备875，需要手动装备后上述效果才会生效。'
+            item[:jp] = 'アビリティ「残念なマーメイド」を習得'
+            item[:zh] = '习得能力「残念的人鱼」'
+            item[:comment] = '该标签表示角色在Lv1学会被动能力ID 875「残念なマーメイド」（残念的人鱼），但习得本身不代表能力已经装备或立即生效。装备后，能力引用的被动防具对象ID 6366会赋予海技使用权限，使所有技能的金币消耗量变为50%（并非只按「商技」类型判断）、被选为攻击目标的权重变为25%，并有3%概率将当回合行动替换为技能ID 3303「遊ぶ：強制死亡」。海技使用权限不代表会自动学会具体海技。角色备注中的<初期アビリティ 3352>使用旧ID；旧ID替换表不会在解析角色备注时自动将其转换为875，因此需要手动装备能力875后上述效果才会生效。'
           elsif actor_id == 540 && level == '1' && skill_id == '424'
-            item[:jp] = 'Lv1でパッシブ能力「口先八丁」を習得'
-            item[:zh] = 'Lv1习得被动能力「能言善辩」'
-            item[:comment] = '该标签表示角色在Lv1学会被动能力ID 424「口先八丁」（能言善辩），但不代表该能力已经装备或立即生效。装备后，能力引用的被动防具对象ID 1739「話術縛符」：仅允许使用交谈，其他技能类型会被封印；交谈SP消耗量变为50%（减少50%）；闪避率和魔法闪避率各提升30%。角色540没有<初期アビリティ>标签，因此该被动能力不会自动装备；当前角色面板中的蛇技使用权限不会因此被移除。'
+            item[:jp] = 'アビリティ「口先八丁」を習得'
+            item[:zh] = '习得能力「能言善辩」'
+            item[:comment] = '该标签使角色在Lv1学会被动能力ID 424「口先八丁」（能言善辩），但该能力也可由职业ID 122「話神」在Lv6习得，因此不属于只能由该角色获得的专属能力。习得本身不代表能力已经装备或立即生效。装备后，能力引用的被动防具对象ID 1739「話術縛符」会使交谈以外的技能类型全部被封印，并使交谈SP消耗量变为50%（减少50%）、闪避率和魔法闪避率各提升30%。角色自身的蛇技使用权限仍保留在数据中，但装备该能力期间蛇技会被封印，因此无法使用。角色540没有<初期アビリティ>标签，需要手动装备该能力后上述效果才会生效。'
           elsif actor_id == 611 && level == '1' && skill_id == '880'
-            item[:jp] = 'Lv1でパッシブ能力「出世貧乏淫魔」を習得'
-            item[:zh] = 'Lv1习得被动能力「出人头地的淫魔」'
-            item[:comment] = '该标签只表示角色在Lv1学会被动能力ID 880「出世貧乏淫魔」（出人头地的淫魔），不代表该能力已经装备或立即生效。装备后，能力引用的被动防具对象ID 6365会赋予盗贼技、商技、神谕、舞蹈、歌唱、交谈、料理、医术、侍奉、王技和淫技的使用权限，并使这些技能类型的威力提升30%。该对象还会依次判定三种行动变化：有10%概率发动技能ID 1993「命运塔罗牌」；前一项未触发时，有10%概率发动技能ID 1995「老虎机」；前两项均未触发时，有3%概率发动技能ID 1989「抛硬币」。三者均为神谕技，至少发动其中一种的实际概率约为21.43%。角色备注中的<初期アビリティ 3351>按当前旧ID替换关系指向能力ID 874，并非能力880，因此无法自动装备能力880；初始状态下上述效果不会生效，需要手动装备能力880后才会生效。这属于初期能力ID配置错误，并非<行動変化>机制失效。此外，角色备注将能力880写入两条<固有習得>标签，但重复习得不会使效果叠加。'
+            item[:jp] = 'アビリティ「出世貧乏淫魔」を習得'
+            item[:zh] = '习得能力「出人头地的淫魔」'
+            item[:comment] = '该标签表示角色在Lv1学会被动能力ID 880「出世貧乏淫魔」（出人头地的淫魔），但习得本身不代表能力已经装备或立即生效。装备后，能力引用的被动防具对象ID 6365会赋予盗贼技、商技、神谕、舞蹈、歌唱、交谈、料理、医术、侍奉、王技和淫技的使用权限，并使这些技能类型强化30%。该对象还提供三个行动变化候选：技能ID 1993「命运塔罗牌」和技能ID 1995「老虎机」的单次判定概率各为10%，技能ID 1989「抛硬币」的单次判定概率为3%。游戏会在每次行动变化判定时随机打乱候选顺序，并逐项判定，触发其中一项后停止；三者至少触发一项的总概率约为21.43%，但各技能最终发动的概率会受随机顺序影响。角色备注中的<初期アビリティ 3351>使用旧ID；旧ID替换表不会在解析角色备注时自动转换该ID，因此该标签不会自动装备能力874或能力880。即使只看旧ID替换关系，3351对应的也是能力874而不是能力880。角色需要手动装备能力880后上述效果才会生效；这是初期能力ID配置错误，并非<行動変化>机制失效。此外，角色备注将能力880写入两条<固有習得>标签，但重复习得不会使效果叠加。'
           end
           item
         end
@@ -1019,11 +1119,11 @@ module GouqiActorAbilityReintroducer
           state_zh = normalize_state_name_zh(translate_name(state))
           item = record(tag, "#{target}对#{state}特攻 #{display}", "#{zh_target.empty? ? target : zh_target}对#{state_zh}的特攻伤害 #{display}", 'additive_percent', amount, display, 'note', "<#{content}>")
           if actor_id == 183 && tag == 'ステート特攻スキルタイプ' && first == '58' && state_id == '28' && amount == '100'
-            item[:comment] = '固有能力描述写成对拘束状态的敌人使用「触手技」可造成特攻伤害，但原始备注实际指定的是「植物技对拘束特攻伤害 +100%」，两者不符。角色已通过职业获得植物技使用权限，但初始状态没有学会任何植物技技能，因此当前没有可用的植物技；学会植物技技能后，该特攻效果才能发挥。'
+            item[:comment] = '固有能力描述写成对拘束状态的敌人使用「触手技」可造成特攻伤害，但原始备注实际指定的是「植物技对拘束特攻伤害 +100%」，两者不符。角色已通过职业获得植物技使用权限，但初始状态没有学会任何植物技技能，因此当前没有可用的植物技。'
           elsif actor_id == 864 && tag == 'ステート特攻スキルタイプ' && first == '69' && state_id == '23' && amount == '100'
             item[:comment] = '该「巨技对黏滑特攻 +100%」与同一角色另一条「巨技对黏滑特攻 +150%」会相加，合计特攻增幅为 +250%，对应特攻倍率为 ×3.5。'
           elsif actor_id == 636 && tag == 'ステート特攻スキルタイプ' && first == '8' && state_id == '13' && amount == '150'
-            item[:comment] = '固有能力描述写成对燃烧、冻结、电击状态的敌人使用「尖剑」可造成大量特攻伤害，但原始备注实际仅指定尖剑技、刀技、枪技对燃烧的特攻伤害 +150%。角色已通过职业获得刀技使用权限，但初始状态没有学会任何刀技技能，因此当前没有可用的刀技；角色本身不能使用枪技。因此当前只有尖剑技部分可以发挥，学会刀技技能后，刀技部分也能发挥。'
+            item[:comment] = '固有能力描述写成对燃烧、冻结、电击状态的敌人使用「尖剑」可造成大量特攻伤害，但原始备注实际仅指定尖剑技、刀技、枪技对燃烧的特攻伤害 +150%。角色已通过职业获得刀技使用权限，但初始状态没有学会任何刀技技能，因此当前没有可用的刀技；角色本身不能使用枪技。因此当前只有尖剑技部分可以发挥。'
           end
           item
         end
@@ -1978,15 +2078,25 @@ module GouqiActorAbilityReintroducer
       value = values.first
       target_jp, target_zh = long_target_labels(actor_id, tag, pairs, lookups)
       case tag
-      when 'スキル強化', 'スキルタイプ強化'
+      when 'スキル強化'
         display = "+#{value}%"
         jp = "#{target_jp}威力 #{display}"
         zh = "#{target_zh}威力 #{display}"
         value_type = 'additive_percent'
-      when '窮地スキル強化', '窮地スキルタイプ強化'
+      when 'スキルタイプ強化'
+        display = "+#{value}%"
+        jp = "#{target_jp}の威力 #{display}"
+        zh = "#{target_zh}强化 #{display}"
+        value_type = 'additive_percent'
+      when '窮地スキル強化'
         display = "+#{value}%"
         jp = "瀕死時、#{target_jp}威力 #{display}"
         zh = "濒死时#{target_zh}威力 #{display}"
+        value_type = 'additive_percent'
+      when '窮地スキルタイプ強化'
+        display = "+#{value}%"
+        jp = "瀕死時、#{target_jp}の威力 #{display}"
+        zh = "濒死时#{target_zh}强化 #{display}"
         value_type = 'additive_percent'
       when 'ステート割合強化スキル'
         display = "+#{value}%"
@@ -2048,7 +2158,7 @@ module GouqiActorAbilityReintroducer
           names_jp = ids.map { |id| skill_type_lookup(lookups[:skill_types], id) }
           names_zh = ids.map { |id| skill_type_effect_name_zh(lookups[:skill_types], id) }
           jp_clauses << "#{names_jp.join('・')}の威力 +#{value}%"
-          zh_clauses << "#{names_zh.join('、')}威力 +#{value}%"
+          zh_clauses << "#{names_zh.join('、')}强化 +#{value}%"
         when '属性強化'
           names_jp = ids.map { |id| element_lookup(lookups[:elements], id) }
           names_zh = names_jp.map { |name| translate_name(name) }
@@ -2358,7 +2468,7 @@ module GouqiActorAbilityReintroducer
       when 'スキルタイプ強化'
         display = "+#{value}%"
         jp = "#{target_jp}の威力 #{display}"
-        zh = "#{target_zh}威力 #{display}"
+        zh = "#{target_zh}强化 #{display}"
         value_type = 'additive_percent'
       when '属性強化'
         display = "+#{value}%"
@@ -2368,7 +2478,7 @@ module GouqiActorAbilityReintroducer
       when '窮地スキルタイプ強化'
         display = "+#{value}%"
         jp = "瀕死時、#{target_jp}の威力 #{display}"
-        zh = "濒死时#{target_zh}威力 #{display}"
+        zh = "濒死时#{target_zh}强化 #{display}"
         value_type = 'additive_percent'
       when 'HPタイプ消費率', 'MPタイプ消費率', 'TPタイプ消費率'
         cost_type = tag[0, 2]
@@ -2385,7 +2495,7 @@ module GouqiActorAbilityReintroducer
 
       item = record(tag, jp, zh, value_type, value, display, 'note', "<#{content}>")
       if actor_id == 728 && tag == 'TPタイプ消費率' && ids.sort == %w[26 53]
-        item[:comment] = '实际标签使圣技（ID 26）和兽技的SP消耗量变为133%（增加33%）。但上一条标签的连续发动对象是神谕（ID 36）和兽技，因此这里很可能是作者将神谕的ID 36误写成了圣技的ID 26。角色已通过种族获得圣技使用权限，但初始状态没有学会任何圣技技能，因此当前没有可用的圣技；学会圣技技能后，标签中的圣技SP消耗增加效果仍会实际生效。'
+        item[:comment] = '实际标签使圣技（ID 26）和兽技的SP消耗量变为133%（增加33%）。但上一条标签的连续发动对象是神谕（ID 36）和兽技，因此这里很可能是作者将神谕的ID 36误写成了圣技的ID 26。角色已通过种族获得圣技使用权限，但初始状态没有学会任何圣技技能，因此当前没有可用的圣技。'
       end
       if actor_id == 571 && tag == 'TPタイプ消費率' && ids.sort == ['18'] && value.to_f == 66.0
         item[:comment] = '固有能力说明写成「海贼技」「跳舞」的SP消耗量变为约2/3，但原始备注实际分别指定海贼技（ID 32）和扇技（ID 18）的SP消耗量变为66%（减少34%），没有配置舞蹈（ID 37）的减耗效果。作者很可能将舞蹈的技能类型ID 37误写成了扇技的ID 18。角色本身不能使用扇技，因此扇技减耗部分通常无法发挥作用；海贼技减耗部分可以正常生效。'
@@ -2410,13 +2520,13 @@ module GouqiActorAbilityReintroducer
       case tag
       when 'スキルタイプ強化'
         item[:jp] = "#{fallback_jp}の威力 #{display}"
-        item[:zh] = "#{fallback_zh}威力 #{display}"
+        item[:zh] = "#{fallback_zh}强化 #{display}"
       when '属性強化'
         item[:jp] = "#{fallback_jp}の威力 #{display}"
         item[:zh] = "#{fallback_zh}威力 #{display}"
       when '窮地スキルタイプ強化'
         item[:jp] = "瀕死時、#{fallback_jp}の威力 #{display}"
-        item[:zh] = "濒死时#{fallback_zh}威力 #{display}"
+        item[:zh] = "濒死时#{fallback_zh}强化 #{display}"
       when 'HPタイプ消費率', 'MPタイプ消費率', 'TPタイプ消費率'
         cost_type = tag[0, 2]
         item[:jp] = "#{fallback_jp}の#{cost_type}消費量#{percent_ratio_phrase_jp(value)}"
@@ -2818,7 +2928,7 @@ module GouqiActorAbilityReintroducer
         item[:comment] = [item[:comment], '固有能力说明写成白魔法、黑魔法、妖术对减速和停止特攻，但原始备注实际配置的是黑魔法（ID 23）和时魔法（ID 24）对减速、停止特攻 +150%，妖术（ID 68）仅对停止特攻 +150%；白魔法（ID 22）完全没有配置特攻效果', '植物技（ID 58）对减速特攻 +150%这一项很可能是作者将应写的68-16-150（妖术对减速特攻）误写成了58-16-150；角色本身不能使用植物技'].join('；') + '。'
       end
       if actor_id == 636 && triples.include?(%w[8 13 150])
-        item[:comment] = [item[:comment], '固有能力描述写成对燃烧、冻结、电击状态的敌人使用「尖剑」可造成大量特攻伤害，但原始备注实际仅指定尖剑技、刀技、枪技对燃烧的特攻伤害 +150%，没有对冻结或电击的特攻效果。角色已通过职业获得刀技使用权限，但初始状态没有学会任何刀技技能，因此当前没有可用的刀技；角色本身不能使用枪技。因此当前只有尖剑技部分可以发挥，学会刀技技能后，刀技部分也能发挥。'].join('；')
+        item[:comment] = [item[:comment], '固有能力描述写成对燃烧、冻结、电击状态的敌人使用「尖剑」可造成大量特攻伤害，但原始备注实际仅指定尖剑技、刀技、枪技对燃烧的特攻伤害 +150%，没有对冻结或电击的特攻效果。角色已通过职业获得刀技使用权限，但初始状态没有学会任何刀技技能，因此当前没有可用的刀技；角色本身不能使用枪技。因此当前只有尖剑技部分可以发挥。'].join('；')
       end
       if actor_id == 119 && triples == [['12', '15', '100'], ['42', '15', '100']]
         item[:comment] = [item[:comment], '固有能力描述写成使用「魔本术」对麻痹、电击状态的敌人可造成特攻伤害，但原始备注实际仅指定对电击的特攻伤害 +100%，没有对麻痹的特攻效果；角色本身不能使用棍技。'].join('；')
