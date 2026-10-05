@@ -65,7 +65,7 @@ module ActorImportantAbilitySummarizer
         next if skipped_row?(row)
 
         # Comments describe a specific source record and therefore block merging.
-        if non_empty?(row['comment_chinese'])
+        if non_empty?(row['comment_chinese']) || non_mergeable_row?(row)
           output_rows << standalone_row(row)
           next
         end
@@ -111,6 +111,10 @@ module ActorImportantAbilitySummarizer
 
     def normalized_description(row)
       description = row['description_chinese'].to_s
+      if row['category'].to_s == 'missing_source_raw'
+        return '固有能力未实装（见备注）'
+      end
+
       return description unless row['category'].to_s == 'skill_boost'
 
       source_raw = row['source_raw'].to_s
@@ -234,6 +238,10 @@ module ActorImportantAbilitySummarizer
       end
 
       nil
+    end
+
+    def non_mergeable_row?(row)
+      row['source_raw'].to_s.match?(/<窮地スキルタイプ強化(?:\s|>)/)
     end
 
     def list_candidate(group, prefix, item, key, suffix = '', suffix_value = nil)
